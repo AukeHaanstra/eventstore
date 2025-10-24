@@ -1,29 +1,30 @@
 package nl.pancompany.eventstore;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Arrays;
-import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
 
 public class Types {
 
-    private final List<Type> types;
+    private final Set<Type> types;
 
-    Types(List<Type> types) {
-        this.types = new ArrayList<>(types);
+    Types(Set<Type> types) {
+        this.types = new HashSet<>(types);
     }
 
     public static Types all() {
-        return new Types(emptyList());
+        return new Types(emptySet());
     }
 
     public static Types or(String... types) {
-        return new Types(Arrays.stream(types).map(Type::of).toList());
+        return new Types(Arrays.stream(types).map(Type::of).collect(Collectors.toSet()));
     }
 
-    public static Types or(List<String> types) {
-        return new Types(types.stream().map(Type::of).toList());
+    public static Types or(Set<String> types) {
+        return new Types(types.stream().map(Type::of).collect(Collectors.toSet()));
     }
 
     public Types orType(String type) {
@@ -31,11 +32,15 @@ public class Types {
         return this;
     }
 
-    List<Type> toList() {
-        return new ArrayList<>(types);
+    Set<Type> toSet() {
+        return new HashSet<>(types);
     }
 
     public boolean isAll() {
+        return isAll(types);
+    }
+
+    public static boolean isAll(Set<Type> types) {
         return types.isEmpty();
     }
 }

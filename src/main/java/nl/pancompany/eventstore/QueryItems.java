@@ -1,22 +1,23 @@
 package nl.pancompany.eventstore;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Set;
 
 public class QueryItems {
 
-    private final List<QueryItem> items;
+    private final Set<QueryItem> items;
 
-    QueryItems(List<QueryItem> items) {
-        this.items = new ArrayList<>(items);
+    QueryItems(Set<QueryItem> items) {
+        this.items = new HashSet<>(items);
     }
 
     public static QueryItems all() {
-        return new QueryItems(List.of(QueryItem.all()));
+        return new QueryItems(Set.of(QueryItem.all()));
     }
 
     public static QueryItems or(QueryItem... items) {
-        return new QueryItems(List.of(items));
+        return new QueryItems(Set.of(items));
     }
 
     public QueryItems orItemOf(String tag, String type) {
@@ -24,7 +25,7 @@ public class QueryItems {
         return this;
     }
 
-    List<QueryItem> toList() {
-        return new ArrayList<>(items);
+    Set<QueryItem> toSet() {
+        return new HashSet<>(items);
     }
 }

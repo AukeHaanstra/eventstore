@@ -1,30 +1,31 @@
 package nl.pancompany.eventstore;
 
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
 
 public class Tags {
 
-    private final List<Tag> tags;
+    private final Set<Tag> tags;
 
-    Tags(List<Tag> tags) {
-        this.tags = new ArrayList<>(tags);
+    Tags(Set<Tag> tags) {
+        this.tags = new HashSet<>(tags);
     }
 
     public static Tags all() {
-        return new Tags(emptyList());
+        return new Tags(emptySet());
     }
 
     public static Tags and(String... tags) {
-        return new Tags(Arrays.stream(tags).map(Tag::of).toList());
+        return new Tags(Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()));
     }
 
-    public static Tags and(List<String> tags) {
-        return new Tags(tags.stream().map(Tag::of).toList());
+    public static Tags and(Set<String> tags) {
+        return new Tags(tags.stream().map(Tag::of).collect(Collectors.toSet()));
     }
 
     public Tags andTag(String tag) {
@@ -32,11 +33,16 @@ public class Tags {
         return this;
     }
 
-    List<Tag> toList() {
-        return new ArrayList<>(tags);
+    Set<Tag> toSet() {
+        return new HashSet<>(tags);
     }
 
     public boolean isAll() {
+        return isAll(tags);
+    }
+
+    public static boolean isAll(Set<Tag> tags) {
         return tags.isEmpty();
     }
+
 }

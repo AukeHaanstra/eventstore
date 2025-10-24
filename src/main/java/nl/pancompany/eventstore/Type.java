@@ -1,6 +1,6 @@
 package nl.pancompany.eventstore;
 
-import java.util.List;
+import java.util.Set;
 
 public record Type(String type) {
 
@@ -9,6 +9,6 @@ public record Type(String type) {
     }
 
     public Types orType(String type) {
-        return new Types(List.of(this, new Type(type)));
+        return new Types(Set.of(this, new Type(type)));
     }
 }

@@ -29,7 +29,7 @@ public class EventStoreTest {
         var myEvent = new Event(new MyEvent("test"));
 
         eventStore.append(myEvent);
-        List<Event> events = eventStore.read();
+        List<Event> events = eventStore.read(Query.all());
 
         assertThat(events.size()).isEqualTo(1);
         assertThat(events).contains(myEvent);
@@ -47,7 +47,7 @@ public class EventStoreTest {
 
         eventStore.append(myEvent1);
         eventStore.append(myEvent2);
-        List<Event> events = eventStore.read();
+        List<Event> events = eventStore.read(Query.all());
 
         assertThat(events.size()).isEqualTo(2);
         assertThat(events).contains(myEvent1, myEvent2);
@@ -82,7 +82,7 @@ public class EventStoreTest {
                 tasks.add(() -> {
                     startGate.countDown();
                     startGate.await();
-                    List<Event> events = eventStore.read(); // read many messages
+                    List<Event> events = eventStore.read(Query.all()); // read many messages
                     // Test for ConcurrentModificationException by iterating over the list
                     events.forEach(event -> {});
                     return null;
@@ -104,11 +104,10 @@ public class EventStoreTest {
         }
 
         int expectedEventsSize = writers * eventsPerWriter;
-        List<Event> events = eventStore.read();
+        List<Event> events = eventStore.read(Query.all());
         assertThat(events).hasSize(expectedEventsSize); // Check for duplicate writes on the same index (then size smaller than expected)
         assertThat(events).containsExactlyInAnyOrderElementsOf(myEvents);
         assertThat(new java.util.HashSet<>(events)).hasSize(expectedEventsSize);
     }
-
 
 }

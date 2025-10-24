@@ -1,6 +1,6 @@
 package nl.pancompany.eventstore;
 
-import java.util.List;
+import java.util.Set;
 
 public record Tag(String tag) {
 
@@ -9,6 +9,6 @@ public record Tag(String tag) {
     }
 
     public Tags andTag(String tag) {
-        return new Tags(List.of(this, new Tag(tag)));
+        return new Tags(Set.of(this, new Tag(tag)));
     }
 }
