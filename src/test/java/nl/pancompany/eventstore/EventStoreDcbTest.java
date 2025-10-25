@@ -1,8 +1,7 @@
 package nl.pancompany.eventstore;
 
-import nl.pancompany.eventstore.EventStore.Event;
-import nl.pancompany.eventstore.EventStore.ReadOptions;
-import nl.pancompany.eventstore.EventStore.SequencedEvent;
+import nl.pancompany.eventstore.EventStore.*;
+import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +10,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
 public class EventStoreDcbTest {
 
@@ -221,6 +220,18 @@ public class EventStoreDcbTest {
     }
 
     @Test
+    void canStoreMultipleEventsAtOnceInOrder() {
+        Event event1 = new Event(new MyEvent("event1"));
+        Event event2 = new Event(new MyEvent("event2"));
+        Event event3 = new Event(new MyEvent("event3"));
+
+        eventStore.append(event1, event2, event3);
+
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.all());
+        assertThat(toEvents(sequencedEvents)).containsExactly(event1, event2, event3);
+    }
+
+    @Test
     void onlyReturnsEventsFromGivenStartPosition() {
         List<Event> appendedEvents = new ArrayList<>();
         for (int i = 0; i < 1000 ; i++) {
@@ -240,6 +251,68 @@ public class EventStoreDcbTest {
         assertThat(queriedEvents.getLast().payload(MyEvent.class).data).isEqualTo("event999");
         // All events filtered have a position >= 400
         assertThat(queriedEvents.stream().map(event -> event.position().value() >= 400).reduce(Boolean::logicalAnd).orElse(false)).isTrue();
+    }
+
+    @Test
+    void noCheckedExceptionThrownWhenAppendConditionSucceeds() {
+        Event event1 = new Event(new MyEvent("event1"), "event1");
+        Event event2 = new Event(new MyEvent("event2"), "event2");
+        Event event3 = new Event(new MyEvent("event3"), "event3");
+        Event event4 = new Event(new MyEvent("event4"), "event4");
+        eventStore.append(event1, event2, event3);
+
+        try {
+            eventStore.append(event4, AppendCondition.builder().failIfEventsMatch(Query.taggedWith("nonexistent").build()).build());
+        } catch (AppendConditionNotSatisfied e) {
+            fail(e.getMessage(), e);
+        }
+
+        assertThat(eventStore.read(Query.all())).hasSize(4);
+    }
+
+    @Test
+    void noCheckedExceptionThrownWhenAppendConditionSucceeds2() {
+        Event event1 = new Event(new MyEvent("event1"), "event1"); // 0
+        Event event2 = new Event(new MyEvent("event2"), "event2"); // 1
+        Event event3 = new Event(new MyEvent("event3"), "event3"); // 2
+        Event event4 = new Event(new MyEvent("event4"), "event4");
+        eventStore.append(event1, event2, event3);
+
+        try {
+            eventStore.append(event4, AppendCondition.builder().failIfEventsMatch(Query.taggedWith("event2").build()).after(1).build());
+        } catch (AppendConditionNotSatisfied e) {
+            fail(e.getMessage(), e);
+        }
+
+        assertThat(eventStore.read(Query.all())).hasSize(4);
+    }
+
+    @Test
+    void checkedExceptionThrownWhenAppendConditionFails() {
+        Event event1 = new Event(new MyEvent("event1"), "event1");
+        Event event2 = new Event(new MyEvent("event2"), "event2");
+        Event event3 = new Event(new MyEvent("event3"), "event3");
+        Event event4 = new Event(new MyEvent("event4"), "event4");
+        eventStore.append(event1, event2, event3);
+
+        assertThatThrownBy(() ->
+                eventStore.append(event4, AppendCondition.builder().failIfEventsMatch(Query.taggedWith("event2").build()).build()))
+                .isInstanceOf(AppendConditionNotSatisfied.class);
+        assertThat(eventStore.read(Query.all())).hasSize(3);
+    }
+
+    @Test
+    void checkedExceptionThrownWhenAppendConditionFails2() {
+        Event event1 = new Event(new MyEvent("event1"), "event1"); // 0
+        Event event2 = new Event(new MyEvent("event2"), "event2"); // 1
+        Event event3 = new Event(new MyEvent("event3"), "event3"); // 2
+        Event event4 = new Event(new MyEvent("event4"), "event4");
+        eventStore.append(event1, event2, event3);
+
+        assertThatThrownBy(() ->
+                eventStore.append(event4, AppendCondition.builder().failIfEventsMatch(Query.taggedWith("event3").build()).after(1).build()))
+                .isInstanceOf(AppendConditionNotSatisfied.class);
+        assertThat(eventStore.read(Query.all())).hasSize(3);
     }
 
     private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {

@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 
 public class EventStore {
 
-    private final List<SequencedEvent> events = new ArrayList<>();
+    private final List<SequencedEvent> storedEvents = new ArrayList<>();
     private final HashMap<Tag, Set<SequencePosition>> tagPositions = new HashMap<>();
     private final HashMap<Type, Set<SequencePosition>> typePositions = new HashMap<>();
     private final Set<SequencePosition> allSequencePositions = new HashSet<>();
@@ -19,22 +19,75 @@ public class EventStore {
     /**
      * Contract: event payload must always be immutable to guarantee immutability of events in the event store
      *
-     * @param event The event instance that wraps a payload (the raw event).
+     * @param events The event instances that wrap a payload (the raw event).
      */
-    public void append(Event event/*, AppendCondition appendCondition*/) {
+    public void append(Event... events) {
+        try {
+            append(List.of(events), null);
+        } catch (AppendConditionNotSatisfied e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Contract: event payload must always be immutable to guarantee immutability of events in the event store
+     *
+     * @param events The event instances that wrap a payload (the raw event).
+     */
+    public void append(List<Event> events) {
+        try {
+            append(events, null);
+        } catch (AppendConditionNotSatisfied e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Contract: event payload must always be immutable to guarantee immutability of events in the event store
+     *
+     * @param event The event instances that wrap a payload (the raw event).
+     */
+    public void append(Event event, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+        append(List.of(event), appendCondition);
+    }
+
+    /**
+     * Contract: event payload must always be immutable to guarantee immutability of events in the event store
+     *
+     * @param events The event instances that wrap a payload (the raw event).
+     */
+    public void append(List<Event> events, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
         try {
             writeLock.lock();
-            SequencePosition insertPosition = SequencePosition.of(events.size());
-            events.add(new SequencedEvent(event, insertPosition));
-            allSequencePositions.add(insertPosition);
-            for (Tag tag : event.tags) {
-                tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition);
+            if (appendCondition != null) {
+                checkWhetherEventsFailAppendCondition(appendCondition);
             }
-            typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition);
+            for (Event event : events) {
+                SequencePosition insertPosition = SequencePosition.of(storedEvents.size());
+                storedEvents.add(new SequencedEvent(event, insertPosition));
+                allSequencePositions.add(insertPosition);
+                for (Tag tag : event.tags) {
+                    tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition);
+                }
+                typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition);
+            }
         } finally {
             writeLock.unlock();
         }
 
+    }
+
+    private void checkWhetherEventsFailAppendCondition(AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+        List<SequencedEvent> queryResult = queryEvents(
+                appendCondition.failIfEventsMatch(),
+                appendCondition.after() == null ? null : ReadOptions.builder()
+                        .withStartingPosition(appendCondition.after().incrementAndGet().value()).build());
+        if (!queryResult.isEmpty()) {
+            if (appendCondition.after() == null) {
+                throw new AppendConditionNotSatisfied("An event matched the provided failIfEventsMatch query");
+            }
+            throw new AppendConditionNotSatisfied("An event matched the provided failIfEventsMatch query after sequence number " + appendCondition.after());
+        }
     }
 
     public List<SequencedEvent> read(Query query) {
@@ -44,40 +97,44 @@ public class EventStore {
     public List<SequencedEvent> read(Query query, ReadOptions options) {
         try {
             readLock.lock();
-            Set<SequencePosition> sequencePositionsFromStart = allSequencePositions.stream().filter(options == null ?
-                    position -> true :
-                    position -> position.value >= options.startingPosition.value)
-                    .collect(Collectors.toSet());
-            Set<SequencePosition> querySequencePositions = new HashSet<>();
-            for (QueryItem queryItem : query.getQueryItems()) {
-                if (queryItem.isAll()) {
-                    return sequencePositionsToEvents(sequencePositionsFromStart);
-                }
-                Set<SequencePosition> queryItemSequencePositions = new HashSet<>(sequencePositionsFromStart);
-                if (!queryItem.isAllTags()) {
-                    for (Tag tag : queryItem.tags()) {
-                        queryItemSequencePositions.retainAll(tagPositions.computeIfAbsent(tag, t -> new HashSet<>()));
-                    }
-                }
-                if (!queryItem.isAllTypes()) {
-                    Set<SequencePosition> queryItemTypePositions = new HashSet<>();
-                    for (Type type : queryItem.types()) {
-                        queryItemTypePositions.addAll(typePositions.computeIfAbsent(type, t -> new HashSet<>()));
-                    }
-                    queryItemSequencePositions.retainAll(queryItemTypePositions);
-                }
-                querySequencePositions.addAll(queryItemSequencePositions);
-            }
-            return sequencePositionsToEvents(querySequencePositions);
+            return queryEvents(query, options);
         } finally {
             readLock.unlock();
         }
     }
 
+    private List<SequencedEvent> queryEvents(Query query, ReadOptions options) {
+        Set<SequencePosition> sequencePositionsFromStart = allSequencePositions.stream().filter(options == null ?
+                        position -> true :
+                        position -> position.value >= options.startingPosition.value)
+                .collect(Collectors.toSet());
+        Set<SequencePosition> querySequencePositions = new HashSet<>();
+        for (QueryItem queryItem : query.getQueryItems()) {
+            if (queryItem.isAll()) {
+                return sequencePositionsToEvents(sequencePositionsFromStart);
+            }
+            Set<SequencePosition> queryItemSequencePositions = new HashSet<>(sequencePositionsFromStart);
+            if (!queryItem.isAllTags()) {
+                for (Tag tag : queryItem.tags()) {
+                    queryItemSequencePositions.retainAll(tagPositions.computeIfAbsent(tag, t -> new HashSet<>()));
+                }
+            }
+            if (!queryItem.isAllTypes()) {
+                Set<SequencePosition> queryItemTypePositions = new HashSet<>();
+                for (Type type : queryItem.types()) {
+                    queryItemTypePositions.addAll(typePositions.computeIfAbsent(type, t -> new HashSet<>()));
+                }
+                queryItemSequencePositions.retainAll(queryItemTypePositions);
+            }
+            querySequencePositions.addAll(queryItemSequencePositions);
+        }
+        return sequencePositionsToEvents(querySequencePositions);
+    }
+
     private List<SequencedEvent> sequencePositionsToEvents(Set<SequencePosition> querySequencePositions) {
         return querySequencePositions.stream()
                 .sorted()
-                .map(position -> events.get(position.value))
+                .map(position -> storedEvents.get(position.value))
                 .toList();
     }
 
@@ -176,10 +233,6 @@ public class EventStore {
         }
     }
 
-    public record AppendCondition(Query failIfEventsMatch, SequencePosition after) {
-
-    }
-
     public record SequencePosition(int value) implements Comparable<SequencePosition> {
 
         public static SequencePosition of(int i) {
@@ -195,6 +248,45 @@ public class EventStore {
             return Integer.compare(this.value, anotherSequencePosition.value);
         }
 
+    }
+
+    public record AppendCondition(Query failIfEventsMatch, SequencePosition after) {
+
+        public static AppendConditionBuilder builder() {
+            return new AppendConditionBuilder();
+        }
+
+        public static class AppendConditionBuilder {
+            private Query failIfEventsMatch;
+            private SequencePosition after;
+
+            private AppendConditionBuilder() {
+            }
+
+            public FailIfEventsMatchAfterBuilder failIfEventsMatch(Query failIfEventsMatch) {
+                this.failIfEventsMatch = failIfEventsMatch;
+                return this.new FailIfEventsMatchAfterBuilder();
+            }
+
+            public class FailIfEventsMatchAfterBuilder {
+
+                public AppendConditionBuilder after(int sequencePosition) {
+                    AppendConditionBuilder.this.after = SequencePosition.of(sequencePosition);
+                    return AppendConditionBuilder.this;
+                }
+
+                public AppendCondition build() {
+                    return AppendConditionBuilder.this.build();
+                }
+            }
+
+            public AppendCondition build() {
+                if (this.failIfEventsMatch == null) {
+                    throw new IllegalArgumentException("failIfEventsMatch must be set");
+                }
+                return new AppendCondition(this.failIfEventsMatch, this.after);
+            }
+        }
     }
 
     /**
@@ -225,5 +317,12 @@ public class EventStore {
 
         }
 
+    }
+
+    public class AppendConditionNotSatisfied extends Exception {
+
+        public AppendConditionNotSatisfied(String message) {
+            super(message);
+        }
     }
 }
