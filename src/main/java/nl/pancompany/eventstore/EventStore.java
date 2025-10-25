@@ -85,12 +85,56 @@ public class EventStore {
             this(payload, Set.of(tags), getName(payload));
         }
 
+        public Event(Object payload, Set<Tag> tags) {
+            this(payload, tags, getName(payload));
+        }
+
         public Event(Object payload, String... tags) {
             this(payload, Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()), getName(payload));
         }
 
-        public Event(Object payload, Set<Tag> tags) {
-            this(payload, tags, getName(payload));
+        public Event(Object payload, Type type, Tag... tags) {
+            this(payload, Set.of(tags), type);
+        }
+
+        public Event(Object payload, Type type, Set<Tag> tags) {
+            this(payload, tags, type);
+        }
+
+        public Event(Object payload, Type type, String... tags) {
+            this(payload, Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()), type);
+        }
+
+        public static Event of(Object payload) {
+            return new Event(payload, Collections.emptySet(), getName(payload));
+        }
+
+        public static Event of(Object payload, Type type) {
+            return new Event(payload, Collections.emptySet(), type);
+        }
+
+        public static Event of(Object payload, Tag... tags) {
+            return new Event(payload, Set.of(tags), getName(payload));
+        }
+
+        public static Event of(Object payload, Set<Tag> tags) {
+            return new Event(payload, tags, getName(payload));
+        }
+
+        public static Event of(Object payload, String... tags) {
+            return new Event(payload, Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()), getName(payload));
+        }
+
+        public static Event of(Object payload, Type type, Tag... tags) {
+            return new Event(payload, Set.of(tags), type);
+        }
+
+        public static Event of(Object payload, Type type, Set<Tag> tags) {
+            return new Event(payload, tags, type);
+        }
+
+        public static Event of(Object payload, Type type, String... tags) {
+            return new Event(payload, Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()), type);
         }
 
         static Type getName(Object payload) {
