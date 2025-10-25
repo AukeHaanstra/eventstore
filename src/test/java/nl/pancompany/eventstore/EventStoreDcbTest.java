@@ -7,10 +7,20 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 public class EventStoreDcbTest {
 
-    record MyEvent(String data) {
+    record MyEvent(String id, String data) {
+
+        public MyEvent(String data) {
+            this(UUID.randomUUID().toString(), data);
+        }
+    }
+
+    record MyOtherEvent(String id, String data) {
     }
 
     EventStore eventStore;
@@ -28,7 +38,7 @@ public class EventStoreDcbTest {
         eventStore.append(event);
 
         List<Event> events = eventStore.read(Query.taggedWith("test").build());
-        Assertions.assertThat(events).containsExactly(event);
+        assertThat(events).containsExactly(event);
     }
 
     @Test
@@ -39,7 +49,7 @@ public class EventStoreDcbTest {
         eventStore.append(event);
 
         List<Event> events = eventStore.read(Query.taggedWith("test").build());
-        Assertions.assertThat(events).hasSize(0);
+        assertThat(events).hasSize(0);
     }
 
     @Test
@@ -50,7 +60,44 @@ public class EventStoreDcbTest {
         eventStore.append(event);
 
         List<Event> events = eventStore.read(Query.havingType(MyEvent.class).build());
-        Assertions.assertThat(events).containsExactly(event);
+        assertThat(events).containsExactly(event);
+    }
+
+    @Test
+    void notRetrievesEventNotMatchingTypeQuery() {
+        var myEvent = new MyEvent("data");
+        Event event = new Event(myEvent);
+
+        eventStore.append(event);
+
+        List<Event> events = eventStore.read(Query.havingType(MyOtherEvent.class).build());
+        assertThat(events).hasSize(0);
+    }
+
+    @Test
+    void retrievesEventMatchingTagAndTypeQuery() {
+        var myEvent = new MyEvent("data");
+        Event event = new Event(myEvent, "MyEntity", "MyOtherEntity");
+
+        eventStore.append(event);
+
+        List<Event> events = eventStore.read(Query
+                .taggedWith("MyEntity", "MyOtherEntity")
+                .andHavingType(MyEvent.class));
+        assertThat(events).containsExactly(event);
+    }
+
+    @Test
+    void notRetrievesEventNotMatchingTagAndTypeQuery() {
+        var myEvent = new MyEvent("data");
+        Event event = new Event(myEvent, "MyEntity", "MyOtherEntity");
+
+        eventStore.append(event);
+
+        List<Event> events = eventStore.read(Query
+                .taggedWith("MyEntity", "MyOtherEntity", "AbsentTag")
+                .andHavingType(MyEvent.class));
+        assertThat(events).hasSize(0);
     }
 
 }

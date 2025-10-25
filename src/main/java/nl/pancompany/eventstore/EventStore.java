@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
 public class EventStore {
 
@@ -78,6 +79,14 @@ public class EventStore {
 
         public Event(Object payload, Type type) {
             this(payload, Collections.emptySet(), type);
+        }
+
+        public Event(Object payload, Tag... tags) {
+            this(payload, Set.of(tags), getName(payload));
+        }
+
+        public Event(Object payload, String... tags) {
+            this(payload, Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()), getName(payload));
         }
 
         public Event(Object payload, Set<Tag> tags) {
