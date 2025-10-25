@@ -25,7 +25,16 @@ public class QueryItems {
         return this;
     }
 
+    public QueryItems orItemOf(String tag, Class<?> clazz) {
+        items.add(QueryItem.of(tag, clazz));
+        return this;
+    }
+
     Set<QueryItem> toSet() {
         return new HashSet<>(items);
+    }
+
+    public boolean isAll() {
+        return items.stream().anyMatch(QueryItem::isAll);
     }
 }

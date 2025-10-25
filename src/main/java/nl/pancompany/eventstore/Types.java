@@ -23,12 +23,21 @@ public class Types {
         return new Types(Arrays.stream(types).map(Type::of).collect(Collectors.toSet()));
     }
 
+    public static Types or(Class<?>... classes) {
+        return new Types(Arrays.stream(classes).map(Type::of).collect(Collectors.toSet()));
+    }
+
     public static Types or(Set<String> types) {
         return new Types(types.stream().map(Type::of).collect(Collectors.toSet()));
     }
 
     public Types orType(String type) {
         types.add(Type.of(type));
+        return this;
+    }
+
+    public Types orType(Class<?> clazz) {
+        types.add(Type.of(clazz));
         return this;
     }
 

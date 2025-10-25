@@ -23,7 +23,13 @@ public class EventStore {
     public void append(Event event/*, AppendCondition appendCondition*/) {
         try {
             writeLock.lock();
+            SequencePosition insertPosition = SequencePosition.of(events.size());
             events.add(event);
+            allSequencePositions.add(insertPosition);
+            for (Tag tag : event.tags) {
+                tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition);
+            }
+            typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition);
         } finally {
             writeLock.unlock();
         }
@@ -40,14 +46,14 @@ public class EventStore {
                 }
                 Set<SequencePosition> queryItemSequencePositions = new HashSet<>(allSequencePositions);
                 if (!queryItem.isAllTags()) {
-                    for (Tag tag : queryItem.getTags()) {
-                        queryItemSequencePositions.retainAll(tagPositions.get(tag));
+                    for (Tag tag : queryItem.tags()) {
+                        queryItemSequencePositions.retainAll(tagPositions.computeIfAbsent(tag, t -> new HashSet<>()));
                     }
                 }
                 if (!queryItem.isAllTypes()) {
                     Set<SequencePosition> queryItemTypePositions = new HashSet<>();
-                    for (Type type : queryItem.getTypes()) {
-                        queryItemTypePositions.addAll(typePositions.get(type));
+                    for (Type type : queryItem.types()) {
+                        queryItemTypePositions.addAll(typePositions.computeIfAbsent(type, t -> new HashSet<>()));
                     }
                     queryItemSequencePositions.retainAll(queryItemTypePositions);
                 }
@@ -62,7 +68,25 @@ public class EventStore {
         }
     }
 
-    public record Event(Object payload) {
+
+
+    public record Event(Object payload, Set<Tag> tags, Type type) {
+
+        public Event(Object payload) {
+            this(payload, Collections.emptySet(), getName(payload));
+        }
+
+        public Event(Object payload, Type type) {
+            this(payload, Collections.emptySet(), type);
+        }
+
+        public Event(Object payload, Set<Tag> tags) {
+            this(payload, tags, getName(payload));
+        }
+
+        static Type getName(Object payload) {
+            return Type.of(payload.getClass());
+        }
 
         @SuppressWarnings("unchecked")
         public <T> T payload(Class<T> clazz) {
@@ -78,6 +102,14 @@ public class EventStore {
     }
 
     public record SequencePosition(int value) implements Comparable<SequencePosition> {
+
+        public static SequencePosition of(int i) {
+            return new SequencePosition(i);
+        }
+
+        public SequencePosition incrementAndGet() {
+            return new SequencePosition(value + 1);
+        }
 
         @Override
         public int compareTo(SequencePosition anotherSequencePosition) {

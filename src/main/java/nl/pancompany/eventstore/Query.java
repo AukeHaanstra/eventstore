@@ -2,8 +2,10 @@ package nl.pancompany.eventstore;
 
 import lombok.Getter;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class Query {
 
@@ -24,6 +26,10 @@ public class Query {
 
     public static Query fromItems(QueryItems queryItems) {
         return new Query(queryItems.toSet());
+    }
+
+    public boolean isAll() {
+        return new QueryItems(queryItems).isAll();
     }
 
     // QueryItems delegate
@@ -55,6 +61,10 @@ public class Query {
 
     public static Query of(String tag, String type) {
         return fromItem(QueryItem.of(tag, type));
+    }
+
+    public static Query of(String tag, Class<?> clazz) {
+        return fromItem(QueryItem.of(tag, clazz));
     }
 
     public static Query of(Tag tag, Type type) {
@@ -89,6 +99,10 @@ public class Query {
         return new AndHavingType(QueryItem.taggedWith(tags));
     }
 
+    public static AndTaggedWith havingType(Class<?>... classes) {
+        return new AndTaggedWith(QueryItem.havingType(classes));
+    }
+
     public static AndTaggedWith havingType(Type... types) {
         return new AndTaggedWith(QueryItem.havingType(types));
     }
@@ -121,9 +135,17 @@ public class Query {
         public Query andTaggedWith(Tags tags) {
             return fromItem(andTaggedWith.andTaggedWith(tags));
         }
+
+        public Query build() {
+            return fromItem(andTaggedWith.build());
+        }
     }
 
     public record AndHavingType(QueryItem.AndHavingType andHavingType) {
+
+        public Query andHavingType(Class<?>... classes) {
+            return fromItem(andHavingType.andHavingType(classes));
+        }
 
         public Query andHavingType(Type... types) {
             return fromItem(andHavingType.andHavingType(types));
@@ -139,6 +161,10 @@ public class Query {
 
         public Query andHavingType(Types types) {
             return fromItem(andHavingType.andHavingType(types));
+        }
+
+        public Query build() {
+            return fromItem(andHavingType.build());
         }
     }
 

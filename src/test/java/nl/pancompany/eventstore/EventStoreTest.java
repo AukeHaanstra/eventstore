@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.*;
 
 public class EventStoreTest {
 
-    record MyEvent(String payload) {
+    record MyEvent(String data) {
     }
 
     EventStore eventStore;

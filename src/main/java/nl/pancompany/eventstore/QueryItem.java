@@ -1,21 +1,10 @@
 package nl.pancompany.eventstore;
 
-import lombok.Getter;
-
 import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@Getter
-public class QueryItem {
-
-    private final Set<Tag> tags;
-    private final Set<Type> types;
-
-    private QueryItem(Set<Tag> tags, Set<Type> types) {
-        this.tags = tags;
-        this.types = types;
-    }
+public record QueryItem(Set<Tag> tags, Set<Type> types) {
 
     public boolean isAll() {
         return isAllTags() && isAllTypes();
@@ -31,6 +20,10 @@ public class QueryItem {
 
     public static QueryItem all() {
         return QueryItem.of(Tags.all(), Types.all());
+    }
+
+    public static QueryItem of(String tag, Class<?> clazz) {
+        return new QueryItem(Set.of(Tag.of(tag)), Set.of(Type.of(clazz)));
     }
 
     public static QueryItem of(String tag, String type) {
@@ -55,6 +48,10 @@ public class QueryItem {
 
     public QueryItems orItemOf(String tag, String type) {
         return new QueryItems(Set.of(this, of(tag, type)));
+    }
+
+    public QueryItems orItemOf(String tag, Class<?> clazz) {
+        return new QueryItems(Set.of(this, of(tag, clazz)));
     }
 
     public static AndHavingType taggedWith(Tag... tags) {
@@ -84,6 +81,11 @@ public class QueryItem {
         return new QueryItem(Tags.all().toSet(), newTypes).new AndTaggedWith();
     }
 
+    public static AndTaggedWith havingType(Class<?>... classes) {
+        Set<Type> newTypes = Arrays.stream(classes).map(Type::of).collect(Collectors.toSet());
+        return new QueryItem(Tags.all().toSet(), newTypes).new AndTaggedWith();
+    }
+
     public static AndTaggedWith havingType(Set<String> types) {
         Set<Type> newTypes = types.stream().map(Type::new).collect(Collectors.toSet());
         return new QueryItem(Tags.all().toSet(), newTypes).new AndTaggedWith();
@@ -93,7 +95,7 @@ public class QueryItem {
         return new QueryItem(Tags.all().toSet(), types.toSet()).new AndTaggedWith();
     }
 
-    public class AndTaggedWith{
+    public class AndTaggedWith {
         public QueryItem andTaggedWith(Tag... tags) {
             return new QueryItem(Set.of(tags), types);
         }
@@ -111,9 +113,14 @@ public class QueryItem {
         public QueryItem andTaggedWith(Tags tags) {
             return new QueryItem(tags.toSet(), types);
         }
+
+        public QueryItem build() {
+            return new QueryItem(Tags.all().toSet(), types);
+        }
     }
 
     public class AndHavingType {
+
         public QueryItem andHavingType(Type... types) {
             return new QueryItem(tags, Set.of(types));
         }
@@ -128,8 +135,17 @@ public class QueryItem {
             return new QueryItem(tags, newTypes);
         }
 
+        public QueryItem andHavingType(Class<?>... classes) {
+            Set<Type> newTypes = Arrays.stream(classes).map(Type::of).collect(Collectors.toSet());
+            return new QueryItem(tags, newTypes);
+        }
+
         public QueryItem andHavingType(Types types) {
             return new QueryItem(tags, types.toSet());
+        }
+
+        public QueryItem build() {
+            return new QueryItem(tags, Types.all().toSet());
         }
     }
 
