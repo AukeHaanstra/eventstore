@@ -1,9 +1,12 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.EventStore.Event;
+import nl.pancompany.eventstore.EventStore.ReadOptions;
+import nl.pancompany.eventstore.EventStore.SequencedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -40,8 +43,8 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query.taggedWith("test").build());
-        assertThat(events).containsExactly(event);
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.taggedWith("test").build());
+        assertThat(toEvents(sequencedEvents)).containsExactly(event);
     }
 
     @Test
@@ -51,8 +54,8 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query.taggedWith("test").build());
-        assertThat(events).hasSize(0);
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.taggedWith("test").build());
+        assertThat(sequencedEvents).hasSize(0);
     }
 
     @Test
@@ -62,8 +65,8 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query.havingType(MyEvent.class).build());
-        assertThat(events).containsExactly(event);
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.havingType(MyEvent.class).build());
+        assertThat(toEvents(sequencedEvents)).containsExactly(event);
     }
 
     @Test
@@ -73,8 +76,8 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query.havingType(MyOtherEvent.class).build());
-        assertThat(events).hasSize(0);
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.havingType(MyOtherEvent.class).build());
+        assertThat(sequencedEvents).hasSize(0);
     }
 
     @Test
@@ -84,10 +87,10 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity", "MyOtherEntity")
                 .andHavingType(MyEvent.class));
-        assertThat(events).containsExactly(event);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event);
     }
 
     @Test
@@ -97,10 +100,10 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity", "MyOtherEntity", "AbsentTag")
                 .andHavingType(MyEvent.class));
-        assertThat(events).hasSize(0);
+        assertThat(sequencedEvents).hasSize(0);
     }
 
     @Test
@@ -110,10 +113,10 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity", "MyOtherEntity")
                 .andHavingType(MyOtherEvent.class));
-        assertThat(events).hasSize(0);
+        assertThat(sequencedEvents).hasSize(0);
     }
 
     @Test
@@ -123,10 +126,10 @@ public class EventStoreDcbTest {
 
         eventStore.append(event);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("AbsentTag")
                 .andHavingType(MyEvent.class));
-        assertThat(events).hasSize(0);
+        assertThat(sequencedEvents).hasSize(0);
     }
 
     @Test
@@ -140,10 +143,10 @@ public class EventStoreDcbTest {
         eventStore.append(event2);
         eventStore.append(event3);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity2", "MyOtherEntity2")
                 .andHavingType(MyEvent.class));
-        assertThat(events).containsExactly(event2);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event2);
     }
 
     @Test
@@ -157,10 +160,10 @@ public class EventStoreDcbTest {
         eventStore.append(event2);
         eventStore.append(event3);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity1", "MyEntity2")
                 .andHavingType(MyEvent.class));
-        assertThat(events).containsExactly(event2);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event2);
     }
 
     @Test
@@ -175,10 +178,10 @@ public class EventStoreDcbTest {
         eventStore.append(event2);
         eventStore.append(event3);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity1")
                 .andHavingType(MyEvent.class));
-        assertThat(events).containsExactly(event2);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event2);
     }
 
     @Test
@@ -193,10 +196,10 @@ public class EventStoreDcbTest {
         eventStore.append(event2);
         eventStore.append(event3);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity2")
                 .andHavingType(MyEvent.class, MyOtherEvent.class));
-        assertThat(events).containsExactly(event2);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event2);
     }
 
     @Test
@@ -211,10 +214,36 @@ public class EventStoreDcbTest {
         eventStore.append(event2);
         eventStore.append(event3);
 
-        List<Event> events = eventStore.read(Query
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query
                 .taggedWith("MyEntity1")
                 .andHavingType(MyEvent.class, MyOtherEvent.class));
-        assertThat(events).containsExactly(event1, event2);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event1, event2);
+    }
+
+    @Test
+    void onlyReturnsEventsFromGivenStartPosition() {
+        List<Event> appendedEvents = new ArrayList<>();
+        for (int i = 0; i < 1000 ; i++) {
+            Event event = new Event(new MyEvent("event" + i), "MyEntity1", "event" + i);
+            appendedEvents.add(event);
+            eventStore.append(event);
+        }
+
+        List<SequencedEvent> queriedEvents = eventStore.read(Query.of("MyEntity1", MyEvent.class), ReadOptions.builder()
+                .withStartingPosition(400).build());
+
+        assertThat(eventStore.read(Query.taggedWith("event0").build()).getFirst().position().value()).isEqualTo(0);
+        assertThat(queriedEvents).hasSize(600);
+        assertThat(queriedEvents.getFirst().position().value()).isEqualTo(400);
+        assertThat(queriedEvents.getFirst().payload(MyEvent.class).data).isEqualTo("event400");
+        assertThat(queriedEvents.getLast().position().value()).isEqualTo(999);
+        assertThat(queriedEvents.getLast().payload(MyEvent.class).data).isEqualTo("event999");
+        // All events filtered have a position >= 400
+        assertThat(queriedEvents.stream().map(event -> event.position().value() >= 400).reduce(Boolean::logicalAnd).orElse(false)).isTrue();
+    }
+
+    private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
+        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
 }

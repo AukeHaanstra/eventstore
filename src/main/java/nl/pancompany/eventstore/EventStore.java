@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 
 public class EventStore {
 
-    private final List<Event> events = new ArrayList<>();
+    private final List<SequencedEvent> events = new ArrayList<>();
     private final HashMap<Tag, Set<SequencePosition>> tagPositions = new HashMap<>();
     private final HashMap<Type, Set<SequencePosition>> typePositions = new HashMap<>();
     private final Set<SequencePosition> allSequencePositions = new HashSet<>();
@@ -25,7 +25,7 @@ public class EventStore {
         try {
             writeLock.lock();
             SequencePosition insertPosition = SequencePosition.of(events.size());
-            events.add(event);
+            events.add(new SequencedEvent(event, insertPosition));
             allSequencePositions.add(insertPosition);
             for (Tag tag : event.tags) {
                 tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition);
@@ -37,15 +37,23 @@ public class EventStore {
 
     }
 
-    public List<Event> read(Query query/*, ReadOptions options*/) {
+    public List<SequencedEvent> read(Query query) {
+        return read(query, null);
+    }
+
+    public List<SequencedEvent> read(Query query, ReadOptions options) {
         try {
             readLock.lock();
+            Set<SequencePosition> sequencePositionsFromStart = allSequencePositions.stream().filter(options == null ?
+                    position -> true :
+                    position -> position.value >= options.startingPosition.value)
+                    .collect(Collectors.toSet());
             Set<SequencePosition> querySequencePositions = new HashSet<>();
             for (QueryItem queryItem : query.getQueryItems()) {
                 if (queryItem.isAll()) {
-                    return new ArrayList<>(events);
+                    return sequencePositionsToEvents(sequencePositionsFromStart);
                 }
-                Set<SequencePosition> queryItemSequencePositions = new HashSet<>(allSequencePositions);
+                Set<SequencePosition> queryItemSequencePositions = new HashSet<>(sequencePositionsFromStart);
                 if (!queryItem.isAllTags()) {
                     for (Tag tag : queryItem.tags()) {
                         queryItemSequencePositions.retainAll(tagPositions.computeIfAbsent(tag, t -> new HashSet<>()));
@@ -60,16 +68,18 @@ public class EventStore {
                 }
                 querySequencePositions.addAll(queryItemSequencePositions);
             }
-            return querySequencePositions.stream()
-                    .sorted()
-                    .map(position -> events.get(position.value))
-                    .toList();
+            return sequencePositionsToEvents(querySequencePositions);
         } finally {
             readLock.unlock();
         }
     }
 
-
+    private List<SequencedEvent> sequencePositionsToEvents(Set<SequencePosition> querySequencePositions) {
+        return querySequencePositions.stream()
+                .sorted()
+                .map(position -> events.get(position.value))
+                .toList();
+    }
 
     public record Event(Object payload, Set<Tag> tags, Type type) {
 
@@ -137,8 +147,16 @@ public class EventStore {
             return new Event(payload, Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()), type);
         }
 
-        static Type getName(Object payload) {
+        private static Type getName(Object payload) {
             return Type.of(payload.getClass());
+        }
+
+    }
+
+    public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequencePosition position) {
+
+        public SequencedEvent(Event event, SequencePosition position) {
+            this(event.payload, event.tags, event.type, position);
         }
 
         @SuppressWarnings("unchecked")
@@ -147,6 +165,14 @@ public class EventStore {
                 throw new IllegalArgumentException("Payload is not assignable to " + clazz);
             }
             return (T) payload;
+        }
+
+        /**
+         * Beware, this operation causes a loss of sequence position information.
+         * @return The event corresponding to this sequenced event
+         */
+        public Event toEvent() {
+            return new Event(payload(), tags, type);
         }
     }
 
@@ -171,5 +197,33 @@ public class EventStore {
 
     }
 
+    /**
+     *
+     * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}]
+     */
+    public record ReadOptions(SequencePosition startingPosition) {
 
+        public static ReadOptionsBuilder builder() {
+            return new ReadOptionsBuilder();
+        }
+
+        public static class ReadOptionsBuilder {
+
+            private SequencePosition startingPosition;
+
+            private ReadOptionsBuilder() {
+            }
+
+            public ReadOptionsBuilder withStartingPosition(int startingPosition) {
+                this.startingPosition = SequencePosition.of(startingPosition);
+                return this;
+            }
+
+            public ReadOptions build() {
+                return new ReadOptions(this.startingPosition);
+            }
+
+        }
+
+    }
 }

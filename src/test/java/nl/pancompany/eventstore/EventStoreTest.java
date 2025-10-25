@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.EventStore.Event;
+import nl.pancompany.eventstore.EventStore.SequencedEvent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,15 +30,15 @@ public class EventStoreTest {
         var myEvent = new Event(new MyEvent("test"));
 
         eventStore.append(myEvent);
-        List<Event> events = eventStore.read(Query.all());
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.all());
 
-        assertThat(events.size()).isEqualTo(1);
-        assertThat(events).contains(myEvent);
+        assertThat(sequencedEvents.size()).isEqualTo(1);
+        assertThat(toEvents(sequencedEvents)).contains(myEvent);
         assertThatCode(() -> {
-            MyEvent retrievedEvent = events.getFirst().payload(MyEvent.class);
+            MyEvent retrievedEvent = sequencedEvents.getFirst().payload(MyEvent.class);
         }).doesNotThrowAnyException();
-        assertThatCode(() -> events.getFirst().payload(Object.class)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> events.getFirst().payload(String.class)).isInstanceOf(IllegalArgumentException.class);
+        assertThatCode(() -> sequencedEvents.getFirst().payload(Object.class)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> sequencedEvents.getFirst().payload(String.class)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -47,10 +48,10 @@ public class EventStoreTest {
 
         eventStore.append(myEvent1);
         eventStore.append(myEvent2);
-        List<Event> events = eventStore.read(Query.all());
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.all());
 
-        assertThat(events.size()).isEqualTo(2);
-        assertThat(events).contains(myEvent1, myEvent2);
+        assertThat(sequencedEvents.size()).isEqualTo(2);
+        assertThat(toEvents(sequencedEvents)).contains(myEvent1, myEvent2);
     }
 
     @Test
@@ -82,9 +83,9 @@ public class EventStoreTest {
                 tasks.add(() -> {
                     startGate.countDown();
                     startGate.await();
-                    List<Event> events = eventStore.read(Query.all()); // read many messages
+                    List<SequencedEvent> sequencedEvents = eventStore.read(Query.all()); // read many messages
                     // Test for ConcurrentModificationException by iterating over the list
-                    events.forEach(event -> {});
+                    sequencedEvents.forEach(event -> {});
                     return null;
                 });
             }
@@ -104,10 +105,14 @@ public class EventStoreTest {
         }
 
         int expectedEventsSize = writers * eventsPerWriter;
-        List<Event> events = eventStore.read(Query.all());
-        assertThat(events).hasSize(expectedEventsSize); // Check for duplicate writes on the same index (then size smaller than expected)
-        assertThat(events).containsExactlyInAnyOrderElementsOf(myEvents);
-        assertThat(new java.util.HashSet<>(events)).hasSize(expectedEventsSize);
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.all());
+        assertThat(sequencedEvents).hasSize(expectedEventsSize); // Check for duplicate writes on the same index (then size smaller than expected)
+        assertThat(toEvents(sequencedEvents)).containsExactlyInAnyOrderElementsOf(myEvents);
+        assertThat(new java.util.HashSet<>(sequencedEvents)).hasSize(expectedEventsSize);
+    }
+
+    private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
+        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
 }

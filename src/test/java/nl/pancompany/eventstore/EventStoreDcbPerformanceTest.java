@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.EventStore.Event;
+import nl.pancompany.eventstore.EventStore.SequencedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -86,7 +87,7 @@ public class EventStoreDcbPerformanceTest {
         events.forEach(eventStore::append);
 
         long millisStart = System.currentTimeMillis();
-        List<Event> filteredEvents = eventStore.read(
+        List<SequencedEvent> filteredEvents = eventStore.read(
                 Query.or(
                         QueryItem.of("MyEntity1:1", "MyEvent2"),
                         QueryItem.taggedWith("MyEntity3:3", "OtherEntity3:6").andHavingType("MyEvent1"),
