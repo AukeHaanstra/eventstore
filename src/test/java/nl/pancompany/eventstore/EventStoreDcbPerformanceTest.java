@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class EventStoreDcbPerformanceTest {
 
-    EventStore eventStore;
+    private EventStore eventStore;
 
     @BeforeEach
     void setUp() {

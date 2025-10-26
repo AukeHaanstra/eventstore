@@ -1,7 +1,6 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.EventStore.*;
-import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,7 +27,7 @@ public class EventStoreDcbTest {
         }
     }
 
-    EventStore eventStore;
+    private EventStore eventStore;
 
     @BeforeEach
     void setUp() {

@@ -64,13 +64,13 @@ public class QueryApiTest {
         assertThat(query.isAll()).isTrue();
 
         assertThatThrownBy(() -> Query.of("myTag", new Object() {}.getClass())).isInstanceOf(IllegalArgumentException.class);
-        assertThat(Type.of(MyType.class)).isEqualTo(Type.of(MyType.class.getCanonicalName()));
+        assertThat(Type.of(MyType.class)).isEqualTo(new Type(MyType.class.getCanonicalName(), MyType.class));
 
         // synonyms - one item with one tag and one type
         query = Query.of("myTag","myType");
         assertSingleTagAndType(query);
         query = Query.of("myTag", MyType.class);
-        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(Type.of(MyType.class.getCanonicalName()));
+        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(new Type(MyType.class.getCanonicalName(), MyType.class));
         query = Query.of(Tag.of("myTag"), Type.of("myType"));
         assertSingleTagAndType(query);
         query = Query.fromItem(
@@ -80,7 +80,7 @@ public class QueryApiTest {
         query = Query.fromItem(
                 QueryItem.of("myTag", MyType.class)
         );
-        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(Type.of(MyType.class.getCanonicalName()));
+        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(new Type(MyType.class.getCanonicalName(), MyType.class));
         query = Query.of(Tag.of("myTag"), Type.of("myType"));
         assertSingleTagAndType(query);
         query = Query.fromItem(
@@ -94,7 +94,9 @@ public class QueryApiTest {
         query = Query.of(Tags.and("myTag", "otherTag"), Types.or("myType", "otherType"));
         assertTwoTagsAndTwoTypes(query);
         query = Query.of(Tags.and("myTag", "otherTag"), Types.or(MyType.class, OtherType.class));
-        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(Type.of(MyType.class.getCanonicalName()), Type.of(OtherType.class.getCanonicalName()));
+        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(
+                new Type(MyType.class.getCanonicalName(), MyType.class),
+                new Type(OtherType.class.getCanonicalName(), OtherType.class));
         query = Query.fromItem(
                 QueryItem.of(Tags.and("myTag", "otherTag"), Types.or("myType", "otherType"))
         );
@@ -116,7 +118,9 @@ public class QueryApiTest {
         query = Query.taggedWith("myTag", "otherTag").andHavingType("myType", "otherType");
         assertTwoTagsAndTwoTypes(query);
         query = Query.taggedWith("myTag", "otherTag").andHavingType(MyType.class, OtherType.class);
-        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(Type.of(MyType.class.getCanonicalName()), Type.of(OtherType.class.getCanonicalName()));
+        assertThat(query.getQueryItems().iterator().next().types()).containsOnly(
+                new Type(MyType.class.getCanonicalName(), MyType.class),
+                new Type(OtherType.class.getCanonicalName(), OtherType.class));
         query = Query.fromItem(
                 QueryItem.taggedWith("myTag", "otherTag").andHavingType("myType", "otherType")
         );
@@ -252,8 +256,8 @@ public class QueryApiTest {
     private static void assertTwoTagsAndTwoDerivedTypes(Query query) {
         assertThat(query.getQueryItems().iterator().next().tags()).containsOnly(Tag.of("myTag"), Tag.of("otherTag"));
         assertThat(query.getQueryItems().iterator().next().types()).containsOnly(
-                Type.of(MyType.class.getCanonicalName()),
-                Type.of(OtherType.class.getCanonicalName()));
+                new Type(MyType.class.getCanonicalName(), MyType.class),
+                new Type(OtherType.class.getCanonicalName(), OtherType.class));
     }
 
     private static void assertThreeTagsAndThreeTypes(Query query) {
@@ -264,9 +268,9 @@ public class QueryApiTest {
     private static void assertThreeTagsAndThreeDerivedTypes(Query query) {
         assertThat(query.getQueryItems().iterator().next().tags()).containsOnly(Tag.of("myTag"), Tag.of("otherTag"), Tag.of("yetAnotherTag"));
         assertThat(query.getQueryItems().iterator().next().types()).containsOnly(
-                Type.of(MyType.class.getCanonicalName()),
-                Type.of(OtherType.class.getCanonicalName()),
-                Type.of(YetAnotherType.class.getCanonicalName()));
+                new Type(MyType.class.getCanonicalName(), MyType.class),
+                new Type(OtherType.class.getCanonicalName(), OtherType.class),
+                new Type(YetAnotherType.class.getCanonicalName(), YetAnotherType.class));
     }
 
     private static void assertThreeQueryItems(Query query) {
@@ -279,9 +283,9 @@ public class QueryApiTest {
 
     private static void assertThreeQueryItemsWithDerivedTypes(Query query) {
         assertThat(query.getQueryItems()).containsOnly(
-                QueryItem.of(Tag.of("myTag"), Type.of(MyType.class.getCanonicalName())),
-                QueryItem.of(Tag.of("otherTag"), Type.of(OtherType.class.getCanonicalName())),
-                QueryItem.of(Tag.of("yetAnotherTag"), Type.of(YetAnotherType.class.getCanonicalName()))
+                QueryItem.of(Tag.of("myTag"), new Type(MyType.class.getCanonicalName(), MyType.class)),
+                QueryItem.of(Tag.of("otherTag"), new Type(OtherType.class.getCanonicalName(), OtherType.class)),
+                QueryItem.of(Tag.of("yetAnotherTag"), new Type(YetAnotherType.class.getCanonicalName(), YetAnotherType.class))
         );
     }
 }

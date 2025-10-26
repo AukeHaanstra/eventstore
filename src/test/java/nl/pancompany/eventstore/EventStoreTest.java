@@ -18,7 +18,7 @@ public class EventStoreTest {
     record MyEvent(String data) {
     }
 
-    EventStore eventStore;
+    private EventStore eventStore;
 
     @BeforeEach
     void setUp() {

@@ -1,20 +1,75 @@
 package nl.pancompany.eventstore;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+// TODO: Passage-of-time events https://verraes.net/2019/05/patterns-for-decoupling-distsys-passage-of-time-event/
 public class EventStore {
 
+    private record EventHandlerInstance(Object eventHandlerInstance, Method eventHandlerMethod) {
+    }
+
     private final List<SequencedEvent> storedEvents = new ArrayList<>();
-    private final HashMap<Tag, Set<SequencePosition>> tagPositions = new HashMap<>();
-    private final HashMap<Type, Set<SequencePosition>> typePositions = new HashMap<>();
+    private final Map<Tag, Set<SequencePosition>> tagPositions = new HashMap<>();
+    private final Map<Type, Set<SequencePosition>> typePositions = new HashMap<>();
     private final Set<SequencePosition> allSequencePositions = new HashSet<>();
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = lock.readLock();
     private final Lock writeLock = lock.writeLock();
+    private final Map<Type, Set<EventHandlerInstance>> synchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<EventHandlerInstance>> asynchronousEventHandlers = new HashMap<>();
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+    public void registerSynchronousEventHandler(Class<?> eventHandlerClass) {
+        registerEventHandler(eventHandlerClass, true);
+    }
+
+    public void registerAsynchronousEventHandler(Class<?> eventHandlerClass) {
+        registerEventHandler(eventHandlerClass, false);
+    }
+
+    private void registerEventHandler(Class<?> eventHandlerClass, boolean synchronous) {
+        Set<Method> eventHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
+                method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
+        eventHandlerMethods.forEach(method -> method.setAccessible(true));
+        Map<Type, Method> newEventHandlers = eventHandlerMethods.stream().collect(Collectors.toMap(
+                this::getEventType,
+                Function.identity()
+        ));
+        Map<Type, Set<EventHandlerInstance>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
+        newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
+                .add(new EventHandlerInstance(getInstance(eventHandlerClass), newEventHandlers.get(key))));
+    }
+
+    private static Object getInstance(Class<?> eventHandlerClass) {
+        try {
+            return eventHandlerClass.getConstructors()[0].newInstance();
+        } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Type getEventType(Method eventHandlerMethod) {
+        Class<?> declaredParemeterType = eventHandlerMethod.getParameters()[0].getType();
+        EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
+        if (declaredParemeterType == Object.class && annotation.type().isBlank()) {
+            throw new IllegalArgumentException("EventHandler annotation must have a type defined when the first parameter is Object.");
+        } else if (declaredParemeterType != Object.class && !annotation.type().isBlank()) {
+            throw new IllegalArgumentException("Either declare an @EventHandler(type = ..) with an Object parameter," +
+                    "or declare @EventHandler with a typed parameter.");
+        } else if (declaredParemeterType == Object.class) {
+            return Type.of(annotation.type());
+        }
+        return Type.of(declaredParemeterType);
+    }
 
     /**
      * Contract: event payload must always be immutable to guarantee immutability of events in the event store
@@ -67,14 +122,34 @@ public class EventStore {
                 storedEvents.add(new SequencedEvent(event, insertPosition));
                 allSequencePositions.add(insertPosition);
                 for (Tag tag : event.tags) {
-                    tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition);
+                    tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition); // add to tag-index
                 }
-                typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition);
+                typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition); // add to type-index
+                invokeEventHandlers(event, insertPosition);
             }
         } finally {
             writeLock.unlock();
         }
 
+    }
+
+    private void invokeEventHandlers(Event event, SequencePosition insertPosition) {
+        if (asynchronousEventHandlers.containsKey(event.type)) {
+            executor.submit(() -> asynchronousEventHandlers.get(event.type)
+                    .forEach(instance -> invoke(instance, new SequencedEvent(event, insertPosition))));
+        }
+        if (synchronousEventHandlers.containsKey(event.type)) {
+            synchronousEventHandlers.get(event.type)
+                    .forEach(instance -> invoke(instance, new SequencedEvent(event, insertPosition)));
+        }
+    }
+
+    private static void invoke(EventHandlerInstance instance, SequencedEvent event) {
+        try {
+            instance.eventHandlerMethod().invoke(instance.eventHandlerInstance, event.payload());
+        } catch (IllegalAccessException | InvocationTargetException e) {
+            throw new IllegalStateException(String.format("Could not invoke handler method for event %s", event), e);
+        }
     }
 
     private void checkWhetherEventsFailAppendCondition(AppendCondition appendCondition) throws AppendConditionNotSatisfied {
@@ -107,26 +182,26 @@ public class EventStore {
         Set<SequencePosition> sequencePositionsFromStart = allSequencePositions.stream().filter(options == null ?
                         position -> true :
                         position -> position.value >= options.startingPosition.value)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet()); // populate base set of positions to check
         Set<SequencePosition> querySequencePositions = new HashSet<>();
         for (QueryItem queryItem : query.getQueryItems()) {
             if (queryItem.isAll()) {
-                return sequencePositionsToEvents(sequencePositionsFromStart);
+                return sequencePositionsToEvents(sequencePositionsFromStart); // just map base set to events
             }
-            Set<SequencePosition> queryItemSequencePositions = new HashSet<>(sequencePositionsFromStart);
-            if (!queryItem.isAllTags()) {
-                for (Tag tag : queryItem.tags()) {
+            Set<SequencePosition> queryItemSequencePositions = new HashSet<>(sequencePositionsFromStart); // mutable base-set of positions
+            if (!queryItem.isAllTags()) { // if all, then retain base-set, otherwise:
+                for (Tag tag : queryItem.tags()) { // step-wise intersection with the set of positions for each query tag (AND)
                     queryItemSequencePositions.retainAll(tagPositions.computeIfAbsent(tag, t -> new HashSet<>()));
                 }
             }
-            if (!queryItem.isAllTypes()) {
+            if (!queryItem.isAllTypes()) { // if all, no second intersection, otherwise:
                 Set<SequencePosition> queryItemTypePositions = new HashSet<>();
-                for (Type type : queryItem.types()) {
+                for (Type type : queryItem.types()) { // step-wise union of the position sets of all query event types (OR)
                     queryItemTypePositions.addAll(typePositions.computeIfAbsent(type, t -> new HashSet<>()));
                 }
-                queryItemSequencePositions.retainAll(queryItemTypePositions);
+                queryItemSequencePositions.retainAll(queryItemTypePositions); // intersection with the set of positions of all query event types (AND)
             }
-            querySequencePositions.addAll(queryItemSequencePositions);
+            querySequencePositions.addAll(queryItemSequencePositions); // union of all sets of positions for all query items (OR)
         }
         return sequencePositionsToEvents(querySequencePositions);
     }
@@ -325,4 +400,5 @@ public class EventStore {
             super(message);
         }
     }
+
 }
