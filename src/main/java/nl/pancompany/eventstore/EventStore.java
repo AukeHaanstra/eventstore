@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class EventStore {
 
-    private record EventHandlerInstance(Object eventHandlerInstance, Method eventHandlerMethod) {
+    private record InvocableMethod(Object objectWithMethod, Method method) {
     }
 
     private final List<SequencedEvent> storedEvents = new ArrayList<>();
@@ -27,24 +27,43 @@ public class EventStore {
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final Lock readLock = lock.readLock();
     private final Lock writeLock = lock.writeLock();
-    private final Map<Type, Set<EventHandlerInstance>> synchronousEventHandlers = new HashMap<>();
-    private final Map<Type, Set<EventHandlerInstance>> asynchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableMethod>> synchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableMethod>> asynchronousEventHandlers = new HashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Set<InvocableMethod> synchronousResetHandlers = new HashSet<>();
+    private final Set<InvocableMethod> asynchronousResetHandlers = new HashSet<>();
 
-    public void registerSynchronousEventHandler(Class<?> eventHandlerClass) {
-        registerEventHandler(eventHandlerClass, getInstance(eventHandlerClass), true);
+    public void registerSynchronousEventHandlers(Class<?> eventHandlerClass) {
+        Object eventHandlerInstance = getInstance(eventHandlerClass);
+        registerResetHandler(eventHandlerClass, eventHandlerInstance, true);
+        registerEventHandler(eventHandlerClass, eventHandlerInstance, true);
     }
 
-    public void registerAsynchronousEventHandler(Class<?> eventHandlerClass) {
-        registerEventHandler(eventHandlerClass, getInstance(eventHandlerClass), false);
+    public void registerAsynchronousEventHandlers(Class<?> eventHandlerClass) {
+        Object eventHandlerInstance = getInstance(eventHandlerClass);
+        registerResetHandler(eventHandlerClass, eventHandlerInstance, false);
+        registerEventHandler(eventHandlerClass, eventHandlerInstance, false);
     }
 
-    public void registerSynchronousEventHandler(Object eventHandlerInstance) {
+    public void registerSynchronousEventHandlers(Object eventHandlerInstance) {
+        registerResetHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
         registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
     }
 
-    public void registerAsynchronousEventHandler(Object eventHandlerInstance) {
+    public void registerAsynchronousEventHandlers(Object eventHandlerInstance) {
+        registerResetHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
         registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
+    }
+
+    private void registerResetHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
+        Set<Method> resetHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
+                method -> method.isAnnotationPresent(ResetHandler.class)).collect(Collectors.toSet());
+        if (resetHandlerMethods.size() > 1) {
+            throw new IllegalArgumentException("Multiple reset handlers are not allowed.");
+        }
+        resetHandlerMethods.forEach(method -> method.setAccessible(true));
+        Set<InvocableMethod> resetHandlers = synchronous ? synchronousResetHandlers : asynchronousResetHandlers;
+        resetHandlerMethods.stream().findFirst().ifPresent(method -> resetHandlers.add(new InvocableMethod(instance, method)));
     }
 
     private void registerEventHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
@@ -55,9 +74,9 @@ public class EventStore {
                 this::getEventType,
                 Function.identity()
         ));
-        Map<Type, Set<EventHandlerInstance>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
+        Map<Type, Set<InvocableMethod>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
-                .add(new EventHandlerInstance(instance, newEventHandlers.get(key))));
+                .add(new InvocableMethod(instance, newEventHandlers.get(key))));
     }
 
     private static Object getInstance(Class<?> eventHandlerClass) {
@@ -130,13 +149,14 @@ public class EventStore {
             }
             for (Event event : events) {
                 SequencePosition insertPosition = SequencePosition.of(storedEvents.size());
-                storedEvents.add(new SequencedEvent(event, insertPosition));
+                SequencedEvent storedEvent = new SequencedEvent(event, insertPosition);
+                storedEvents.add(storedEvent);
                 allSequencePositions.add(insertPosition);
                 for (Tag tag : event.tags) {
                     tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition); // add to tag-index
                 }
                 typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition); // add to type-index
-                invokeEventHandlers(event, insertPosition);
+                invokeEventHandlers(storedEvent);
             }
         } finally {
             writeLock.unlock();
@@ -144,20 +164,46 @@ public class EventStore {
 
     }
 
-    private void invokeEventHandlers(Event event, SequencePosition insertPosition) {
-        if (asynchronousEventHandlers.containsKey(event.type)) {
-            executor.submit(() -> asynchronousEventHandlers.get(event.type)
-                    .forEach(instance -> invoke(instance, new SequencedEvent(event, insertPosition))));
-        }
-        if (synchronousEventHandlers.containsKey(event.type)) {
-            synchronousEventHandlers.get(event.type)
-                    .forEach(instance -> invoke(instance, new SequencedEvent(event, insertPosition)));
+    /**
+     * Resets and replays events to registered event handlers.
+     *
+     * @param end end position, exclusive
+     */
+    public void replay(SequencePosition end) {
+        try {
+            readLock.lock();
+            synchronousResetHandlers.forEach(EventStore::invoke);
+            asynchronousResetHandlers.forEach(resetHandler -> executor.submit(() -> invoke(resetHandler)));
+            storedEvents.subList(0, end.value).forEach(this::invokeEventHandlers);
+        } finally {
+            readLock.unlock();
         }
     }
 
-    private static void invoke(EventHandlerInstance instance, SequencedEvent event) {
+    private static void invoke(InvocableMethod instance) {
         try {
-            instance.eventHandlerMethod().invoke(instance.eventHandlerInstance, event.payload());
+            instance.method().invoke(instance.objectWithMethod);
+        } catch (IllegalAccessException e) {
+            log.warn("Could not invoke reset handler method.", e);
+        } catch (InvocationTargetException e) {
+            log.warn("Invoked reset handler threw exception", e);
+        }
+    }
+
+    private void invokeEventHandlers(SequencedEvent sequencedEvent) {
+        if (asynchronousEventHandlers.containsKey(sequencedEvent.type)) {
+            executor.submit(() -> asynchronousEventHandlers.get(sequencedEvent.type)
+                    .forEach(instance -> invoke(instance, sequencedEvent)));
+        }
+        if (synchronousEventHandlers.containsKey(sequencedEvent.type)) {
+            synchronousEventHandlers.get(sequencedEvent.type)
+                    .forEach(instance -> invoke(instance, sequencedEvent));
+        }
+    }
+
+    private static void invoke(InvocableMethod instance, SequencedEvent event) {
+        try {
+            instance.method().invoke(instance.objectWithMethod, event.payload());
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke handler method for event {}", event, e);
         } catch (InvocationTargetException e) {
@@ -378,7 +424,6 @@ public class EventStore {
     }
 
     /**
-     *
      * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}]
      */
     public record ReadOptions(SequencePosition startingPosition) {
@@ -394,6 +439,10 @@ public class EventStore {
             private ReadOptionsBuilder() {
             }
 
+            /**
+             * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}]
+             * @return
+             */
             public ReadOptionsBuilder withStartingPosition(int startingPosition) {
                 this.startingPosition = SequencePosition.of(startingPosition);
                 return this;
