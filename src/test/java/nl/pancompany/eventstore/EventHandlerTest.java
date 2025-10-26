@@ -5,8 +5,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static java.lang.System.currentTimeMillis;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -129,34 +131,45 @@ public class EventHandlerTest {
 
     @Test
     void registeredAsynchronousHandlerHandlesMultipleEventsInOrder() {
-        int batchSize = 10000;
+        int batchSize = 20000;
         List<Event> events = new ArrayList<>();
-        List<MyEvent> myEvents = new ArrayList<>();
+        List<Object> myEvents = new ArrayList<>();
         for (int i = 0; i < batchSize; i++) {
             MyEvent myEvent = new MyEvent(Integer.toString(i));
             events.add(new Event(myEvent));
             myEvents.add(myEvent);
+            MyOtherEvent myOtherEvent = new MyOtherEvent(Integer.toString(i));
+            events.add(new Event(myOtherEvent));
+            myEvents.add(myOtherEvent);
         }
 
         eventStore.registerAsynchronousEventHandler(RecordingEventHandlerClass.class);
         long start = currentTimeMillis();
         events.forEach(event -> eventStore.append(event));
+        System.out.println(RecordingEventHandlerClass.myHandledEvents.size() + " events published in " +
+                (currentTimeMillis() - start) + " ms from publication.");
 
         await().untilAsserted(() -> {
-            assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize);
+            assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2); // 2 different events
         });
         long end = currentTimeMillis();
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
-        System.out.println(batchSize + " events handled in " + (end - start) + " ms from publication.");
+        System.out.println(RecordingEventHandlerClass.myHandledEvents.size() + " events published and handled in "
+                + (end - start) + " ms from publication.");
     }
 
     public static class RecordingEventHandlerClass {
 
-        private static List<MyEvent> myHandledEvents = new ArrayList<>();
+        private static List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
 
         @EventHandler
         private void handle(MyEvent event) {
             myHandledEvents.add(event);
+        }
+
+        @EventHandler
+        private void handle(MyOtherEvent myOtherEvent) {
+            myHandledEvents.add(myOtherEvent);
         }
 
     }
