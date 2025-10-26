@@ -1,5 +1,7 @@
 package nl.pancompany.eventstore;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
@@ -12,6 +14,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 // TODO: Passage-of-time events https://verraes.net/2019/05/patterns-for-decoupling-distsys-passage-of-time-event/
+@Slf4j
 public class EventStore {
 
     private record EventHandlerInstance(Object eventHandlerInstance, Method eventHandlerMethod) {
@@ -26,17 +29,25 @@ public class EventStore {
     private final Lock writeLock = lock.writeLock();
     private final Map<Type, Set<EventHandlerInstance>> synchronousEventHandlers = new HashMap<>();
     private final Map<Type, Set<EventHandlerInstance>> asynchronousEventHandlers = new HashMap<>();
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     public void registerSynchronousEventHandler(Class<?> eventHandlerClass) {
-        registerEventHandler(eventHandlerClass, true);
+        registerEventHandler(eventHandlerClass, getInstance(eventHandlerClass), true);
     }
 
     public void registerAsynchronousEventHandler(Class<?> eventHandlerClass) {
-        registerEventHandler(eventHandlerClass, false);
+        registerEventHandler(eventHandlerClass, getInstance(eventHandlerClass), false);
     }
 
-    private void registerEventHandler(Class<?> eventHandlerClass, boolean synchronous) {
+    public void registerSynchronousEventHandler(Object eventHandlerInstance) {
+        registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
+    }
+
+    public void registerAsynchronousEventHandler(Object eventHandlerInstance) {
+        registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
+    }
+
+    private void registerEventHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
         Set<Method> eventHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
                 method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
         eventHandlerMethods.forEach(method -> method.setAccessible(true));
@@ -46,7 +57,7 @@ public class EventStore {
         ));
         Map<Type, Set<EventHandlerInstance>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
-                .add(new EventHandlerInstance(getInstance(eventHandlerClass), newEventHandlers.get(key))));
+                .add(new EventHandlerInstance(instance, newEventHandlers.get(key))));
     }
 
     private static Object getInstance(Class<?> eventHandlerClass) {
@@ -147,8 +158,10 @@ public class EventStore {
     private static void invoke(EventHandlerInstance instance, SequencedEvent event) {
         try {
             instance.eventHandlerMethod().invoke(instance.eventHandlerInstance, event.payload());
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new IllegalStateException(String.format("Could not invoke handler method for event %s", event), e);
+        } catch (IllegalAccessException e) {
+            log.warn("Could not invoke handler method for event {}", event, e);
+        } catch (InvocationTargetException e) {
+            log.warn("Invoked handler threw exception for event {}", event, e);
         }
     }
 

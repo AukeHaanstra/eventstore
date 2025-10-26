@@ -100,7 +100,7 @@ public class EventStoreDcbPerformanceTest {
 
         assertThat(filteredEvents).hasSize(5 * iterations1 + 1);
         System.out.printf("Total events in event store: %s.%nEvents queried: %s%n", 2 * iterations1 * iterations2, filteredEvents.size());
-        System.out.printf("Querying the event store took %s milliseconds", millisEnd - millisStart);
+        System.out.printf("Querying the event store took %s milliseconds%n", millisEnd - millisStart);
 
         assertThat(filteredEvents.get(0).payload(MyEvent2.class).data).isEqualTo("event2");
         assertThat(filteredEvents.get(1).payload(MyEvent1.class).data).isEqualTo("event5");
