@@ -23,32 +23,31 @@ import static lombok.AccessLevel.PACKAGE;
 @RequiredArgsConstructor(access = PACKAGE)
 public class StateManager {
 
-    public class State {
+    public class State<T> {
 
+        @Getter
+        private final T entity;
         @Getter(PACKAGE)
-        private final Object stateInstance;
-        @Getter(PACKAGE)
-        private final Class<?> stateClass;
+        private final Class<T> stateClass;
         private final Query query;
         @Setter(PACKAGE)
         private SequencePosition sequencePositionLastSourcedEvent;
 
-
-
-        private State(Object stateInstance, Query query) {
-            this.stateInstance = stateInstance;
-            this.stateClass = stateInstance.getClass();
+        @SuppressWarnings("unchecked")
+        private State(T entity, Query query) {
+            this.entity = entity;
+            this.stateClass = (Class<T>) entity.getClass();
             this.query = query;
         }
 
-        private State(Object stateInstance, Class<?> stateClass, Query query) {
-            this.stateInstance = stateInstance;
+        private State(T entity, Class<T> stateClass, Query query) {
+            this.entity = entity;
             this.stateClass = stateClass;
             this.query = query;
         }
 
         public void apply(Object event, Tag tag, Type type) {
-            if (stateInstance == null) {
+            if (entity == null) {
                 return;
             }
             apply(event, Tags.and(tag), type);
@@ -80,26 +79,26 @@ public class StateManager {
     private final EventStore eventStore;
     private Map<Type, InvocableMethod> eventSourcedCallbacks;
 
-    public State load(Object emptyStateInstance, Query query) {
+    public <T> State<T> load(T emptyStateInstance, Query query) {
         requireNonNull(emptyStateInstance);
         List<SequencedEvent> events = eventStore.read(query);
-        State state = new State(emptyStateInstance, query);
+        State<T> state = new State<>(emptyStateInstance, query);
         executeEventSourcedCallbacks(state, events);
         return state;
     }
 
-    public State load(Class<?> stateClass, Query query) {
-        Optional<ConstructorCallback> constructorWithEventParamCallBack = getStateConstructorCallback(stateClass);
-        boolean createEmptyState = !constructorWithEventParamCallBack.isPresent();
+    public <T> State<T> load(Class<T> stateClass, Query query) {
+        Optional<ConstructorCallback<T>> constructorWithEventParamCallBack = getStateConstructorCallback(stateClass);
+        boolean createEmptyState = constructorWithEventParamCallBack.isEmpty();
         List<SequencedEvent> events = eventStore.read(query);
-        State state = createEmptyState ? createEmptyState(stateClass, query) :
+        State<T> state = createEmptyState ? createEmptyState(stateClass, query) :
                 // Use the first event for creating the initial state
                 createState(constructorWithEventParamCallBack.get(), events.getFirst(), query);
         executeEventSourcedCallbacks(state, events.subList(createEmptyState ? 0 : 1, events.size()));
         return state;
     }
 
-    private void executeEventSourcedCallbacks(State state, List<SequencedEvent> events) {
+    private <T> void executeEventSourcedCallbacks(State<T> state, List<SequencedEvent> events) {
         eventSourcedCallbacks = getEventSourcedCallbacks(state);
         events.stream()
                 .map(event -> new EventHandlerInvocation(eventSourcedCallbacks.get(event.type()), event))
@@ -109,24 +108,26 @@ public class StateManager {
         state.setSequencePositionLastSourcedEvent(lastEventPosition);
     }
 
-    private Optional<ConstructorCallback> getStateConstructorCallback(Class<?> stateClass) {
-        Set<Constructor<?>> stateClassConstructors = Arrays.stream(stateClass.getDeclaredConstructors()).
-                filter(constructor -> constructor.isAnnotationPresent(StateConstructor.class))
+    @SuppressWarnings("unchecked")
+    private <T> Optional<ConstructorCallback<T>> getStateConstructorCallback(Class<T> stateClass) {
+        Set<Constructor<T>> stateClassConstructors = Arrays.stream(stateClass.getDeclaredConstructors())
+                .map(constructor -> ((Constructor<T>) constructor))
+                .filter(constructor -> constructor.isAnnotationPresent(StateConstructor.class))
                 .collect(Collectors.toSet());
         stateClassConstructors.forEach(constructor -> constructor.setAccessible(true));
         return stateClassConstructors.stream()
-                .map(constructor ->new ConstructorCallback(getEventType(constructor), constructor, false))
+                .map(constructor ->new ConstructorCallback<>(getEventType(constructor), constructor, false))
                 .findFirst();
     }
 
-    private Map<Type, InvocableMethod> getEventSourcedCallbacks(State state) {
+    private <T> Map<Type, InvocableMethod> getEventSourcedCallbacks(State<T> state) {
         Set<Method> stateClassMethods = Arrays.stream(state.getStateClass().getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(EventSourced.class))
                 .collect(Collectors.toSet());
         stateClassMethods.forEach(method -> method.setAccessible(true));
         return stateClassMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
-                method -> new InvocableMethod(state.getStateInstance(), method)
+                method -> new InvocableMethod(state.getEntity(), method)
         ));
     }
 
@@ -169,22 +170,23 @@ public class StateManager {
         return type;
     }
 
-    private State createState(ConstructorCallback constructorCallBack, SequencedEvent first, Query query) {
+    private <T> State<T> createState(ConstructorCallback<T> constructorCallBack, SequencedEvent first, Query query) {
         if (!constructorCallBack.type().equals(first.type())) {
             throw new StateConstructionFailedException("Initial event type different from event type declared in StateConstructor");
         }
         try {
-            return this.new State(constructorCallBack.constructor().newInstance(first.payload()), query);
+            return this.new State<>(constructorCallBack.constructor().newInstance(first.payload()), query);
         } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
             throw new StateConstructionFailedException(e);
         }
     }
 
-    private State createEmptyState(Class<?> stateClass, Query query) {
+    @SuppressWarnings("unchecked")
+    private <T> State<T> createEmptyState(Class<T> stateClass, Query query) {
         try {
-            Constructor<?> noArgConstructor = stateClass.getDeclaredConstructors()[0];
+            Constructor<T> noArgConstructor = (Constructor<T>) stateClass.getDeclaredConstructors()[0];
             noArgConstructor.setAccessible(true);
-            return this.new State(noArgConstructor.newInstance(), query);
+            return this.new State<>(noArgConstructor.newInstance(), stateClass, query);
         } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -211,6 +213,7 @@ public class StateManager {
             log.warn("Invoked handler threw exception while applying state change {}", payload, e);
         }
     }
+
     public class StateConstructionFailedException extends RuntimeException {
 
         public StateConstructionFailedException(String message) {
@@ -222,7 +225,7 @@ public class StateManager {
 
     }
 
-    private record ConstructorCallback(Type type, Constructor<?> constructor, boolean noArg) {
+    private record ConstructorCallback<T>(Type type, Constructor<T> constructor, boolean noArg) {
     }
 
     public class StateManagerOptimisticLockingException extends RuntimeException {
