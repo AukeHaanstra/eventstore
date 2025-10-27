@@ -23,6 +23,10 @@ public class Tags {
         return new Tags(Arrays.stream(tags).map(Tag::of).collect(Collectors.toSet()));
     }
 
+    public static Tags and(Tag... tags) {
+        return new Tags(Set.of(tags));
+    }
+
     public static Tags and(Set<String> tags) {
         return new Tags(tags.stream().map(Tag::of).collect(Collectors.toSet()));
     }

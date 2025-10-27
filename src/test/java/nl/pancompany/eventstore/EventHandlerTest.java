@@ -41,6 +41,12 @@ public class EventHandlerTest {
     }
 
     @Test
+    void throwsExceptionOnInvalidHandlerMethod3() {
+        assertThatThrownBy(() -> eventStore.registerSynchronousEventHandlers(InvalidEventHandlerClass3.class))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void registeredSynchronousHandlerHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
@@ -51,6 +57,24 @@ public class EventHandlerTest {
         assertThat(EventHandlerClass.myHandledEvent).isEqualTo(myEvent);
         long end = currentTimeMillis();
         System.out.printf("Event handled in %s ms from publication.%n",  (end - start));
+    }
+
+    @Test
+    void registeredSynchronousHandlerHandlesEvent2() {
+        SomeOtherEvent someOtherEvent = new SomeOtherEvent("data");
+
+        eventStore.registerSynchronousEventHandlers(EventHandlerClass.class);
+        eventStore.append(new Event(someOtherEvent, Type.of("SomeOtherEvent")));
+
+        assertThat(EventHandlerClass.someOtherHandledEvent).isEqualTo(someOtherEvent);
+    }
+
+    @Test
+    void eventsWithoutHandlerAreSkipped() {
+        MyEvent myEvent = new MyEvent("data");
+
+        eventStore.registerSynchronousEventHandlers(NoHandlerClass.class);
+        eventStore.append(new Event(myEvent)); // skipped, no exception
     }
 
     @Test
@@ -239,9 +263,14 @@ public class EventHandlerTest {
 
     }
 
-    public static class EventHandlerClass {
+    private static class NoHandlerClass {
+
+    }
+
+    private static class EventHandlerClass {
 
         private static MyEvent myHandledEvent;
+        private static SomeOtherEvent someOtherHandledEvent;
 
         @EventHandler
         private void handle(MyEvent event) {
@@ -254,6 +283,7 @@ public class EventHandlerTest {
 
         @EventHandler(type = "SomeOtherEvent")
         private void handle(Object event) {
+            someOtherHandledEvent = (SomeOtherEvent) event;
         }
 
         private void someUnannotatedMethod(Object object) {
@@ -290,6 +320,18 @@ public class EventHandlerTest {
 
         @EventHandler(type = "Invalid")
         private void handle(MyEvent event) {
+        }
+
+    }
+
+    public static class InvalidEventHandlerClass3 {
+
+        @ResetHandler
+        private void reset1() {
+        }
+
+        @ResetHandler
+        private void reset2() {
         }
 
     }

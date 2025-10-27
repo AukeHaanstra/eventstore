@@ -2,6 +2,7 @@ package nl.pancompany.eventstore;
 
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
@@ -10,15 +11,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 // TODO: Passage-of-time events https://verraes.net/2019/05/patterns-for-decoupling-distsys-passage-of-time-event/
 @Slf4j
 public class EventStore {
-
-    private record InvocableMethod(Object objectWithMethod, Method method) {
-    }
 
     private final List<SequencedEvent> storedEvents = new ArrayList<>();
     private final Map<Tag, Set<SequencePosition>> tagPositions = new HashMap<>();
@@ -32,6 +29,10 @@ public class EventStore {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<InvocableMethod> synchronousResetHandlers = new HashSet<>();
     private final Set<InvocableMethod> asynchronousResetHandlers = new HashSet<>();
+
+    public StateManager getStateManager() {
+        return new StateManager(this);
+    }
 
     public void registerSynchronousEventHandlers(Class<?> eventHandlerClass) {
         Object eventHandlerInstance = getInstance(eventHandlerClass);
@@ -70,18 +71,20 @@ public class EventStore {
         Set<Method> eventHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
                 method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
         eventHandlerMethods.forEach(method -> method.setAccessible(true));
-        Map<Type, Method> newEventHandlers = eventHandlerMethods.stream().collect(Collectors.toMap(
+        Map<Type, InvocableMethod> newEventHandlers = eventHandlerMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
-                Function.identity()
+                method -> new InvocableMethod(instance, method)
         ));
         Map<Type, Set<InvocableMethod>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
-                .add(new InvocableMethod(instance, newEventHandlers.get(key))));
+                .add(newEventHandlers.get(key)));
     }
 
     private static Object getInstance(Class<?> eventHandlerClass) {
         try {
-            return eventHandlerClass.getConstructors()[0].newInstance();
+            Constructor<?> noArgConstructor = eventHandlerClass.getDeclaredConstructors()[0];
+            noArgConstructor.setAccessible(true);
+            return noArgConstructor.newInstance();
         } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
@@ -182,7 +185,7 @@ public class EventStore {
 
     private static void invoke(InvocableMethod instance) {
         try {
-            instance.method().invoke(instance.objectWithMethod);
+            instance.method().invoke(instance.objectWithMethod());
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke reset handler method.", e);
         } catch (InvocationTargetException e) {
@@ -202,8 +205,11 @@ public class EventStore {
     }
 
     private static void invoke(InvocableMethod instance, SequencedEvent event) {
+        if (instance == null) {
+            return; // skip event if no handler
+        }
         try {
-            instance.method().invoke(instance.objectWithMethod, event.payload());
+            instance.method().invoke(instance.objectWithMethod(), event.payload());
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke handler method for event {}", event, e);
         } catch (InvocationTargetException e) {
