@@ -145,6 +145,7 @@ public class EventStore {
      * @param events The event instances that wrap a payload (the raw event).
      */
     public void append(List<Event> events, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+        List<SequencedEvent> addedEvents = new ArrayList<>();
         try {
             writeLock.lock();
             if (appendCondition != null) {
@@ -154,17 +155,17 @@ public class EventStore {
                 SequencePosition insertPosition = SequencePosition.of(storedEvents.size());
                 SequencedEvent storedEvent = new SequencedEvent(event, insertPosition);
                 storedEvents.add(storedEvent);
+                addedEvents.add(storedEvent);
                 allSequencePositions.add(insertPosition);
                 for (Tag tag : event.tags) {
                     tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition); // add to tag-index
                 }
                 typePositions.computeIfAbsent(event.type, k -> new HashSet<>()).add(insertPosition); // add to type-index
-                invokeEventHandlers(storedEvent);
             }
         } finally {
             writeLock.unlock();
         }
-
+        addedEvents.forEach(this::invokeEventHandlers);
     }
 
     /**
@@ -173,14 +174,16 @@ public class EventStore {
      * @param end end position, exclusive
      */
     public void replay(SequencePosition end) {
+        List<SequencedEvent> replayList;
         try {
             readLock.lock();
-            synchronousResetHandlers.forEach(EventStore::invoke);
-            asynchronousResetHandlers.forEach(resetHandler -> executor.submit(() -> invoke(resetHandler)));
-            storedEvents.subList(0, end.value).forEach(this::invokeEventHandlers);
+            replayList = new ArrayList<>(storedEvents.subList(0, end.value));
         } finally {
             readLock.unlock();
         }
+        synchronousResetHandlers.forEach(EventStore::invoke);
+        asynchronousResetHandlers.forEach(resetHandler -> executor.submit(() -> invoke(resetHandler)));
+        replayList.forEach(this::invokeEventHandlers);
     }
 
     private static void invoke(InvocableMethod instance) {
