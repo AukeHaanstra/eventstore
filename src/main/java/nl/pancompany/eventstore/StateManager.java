@@ -5,9 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import nl.pancompany.eventstore.EventStore.AppendCondition;
-import nl.pancompany.eventstore.EventStore.Event;
 import nl.pancompany.eventstore.EventStore.SequencePosition;
-import nl.pancompany.eventstore.EventStore.SequencedEvent;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;

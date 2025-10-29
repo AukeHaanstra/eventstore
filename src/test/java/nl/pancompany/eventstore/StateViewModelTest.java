@@ -1,6 +1,5 @@
 package nl.pancompany.eventstore;
 
-import nl.pancompany.eventstore.EventStore.Event;
 import nl.pancompany.eventstore.StateManager.State;
 import nl.pancompany.eventstore.StateManager.StateManagerOptimisticLockingException;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,7 +43,7 @@ public class StateViewModelTest {
         Query query = Query
                 .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
                 .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
-        List<EventStore.SequencedEvent> sequencedEvents = eventStore.read(query);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
@@ -69,7 +68,7 @@ public class StateViewModelTest {
         Query query = Query
                 .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
                 .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
-        List<EventStore.SequencedEvent> sequencedEvents = eventStore.read(query);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
@@ -94,7 +93,7 @@ public class StateViewModelTest {
         Query query = Query
                 .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
                 .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
-        List<EventStore.SequencedEvent> sequencedEvents = eventStore.read(query);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
@@ -119,7 +118,7 @@ public class StateViewModelTest {
         Query query = Query
                 .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
                 .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
-        List<EventStore.SequencedEvent> sequencedEvents = eventStore.read(query);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
@@ -141,8 +140,8 @@ public class StateViewModelTest {
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, concurrentlySavedEvent);
     }
 
-    private static List<Event> toEvents(List<EventStore.SequencedEvent> sequencedEvents) {
-        return sequencedEvents.stream().map(EventStore.SequencedEvent::toEvent).toList();
+    private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
+        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
     private static class MyEntity {

@@ -1,7 +1,5 @@
 package nl.pancompany.eventstore;
 
-import nl.pancompany.eventstore.EventStore.Event;
-import nl.pancompany.eventstore.EventStore.SequencedEvent;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

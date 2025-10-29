@@ -1,6 +1,5 @@
 package nl.pancompany.eventstore;
 
-import nl.pancompany.eventstore.EventStore.Event;
 import nl.pancompany.eventstore.EventStore.SequencePosition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,19 +29,19 @@ public class EventHandlerTest {
 
     @Test
     void throwsExceptionOnInvalidHandlerMethod() {
-        assertThatThrownBy(() -> eventStore.registerSynchronousEventHandlers(InvalidEventHandlerClass.class))
+        assertThatThrownBy(() -> eventStore.getEventBus().registerSynchronousEventHandlers(InvalidEventHandlerClass.class))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void throwsExceptionOnInvalidHandlerMethod2() {
-        assertThatThrownBy(() -> eventStore.registerSynchronousEventHandlers(InvalidEventHandlerClass2.class))
+        assertThatThrownBy(() -> eventStore.getEventBus().registerSynchronousEventHandlers(InvalidEventHandlerClass2.class))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void throwsExceptionOnInvalidHandlerMethod3() {
-        assertThatThrownBy(() -> eventStore.registerSynchronousEventHandlers(InvalidEventHandlerClass3.class))
+        assertThatThrownBy(() -> eventStore.getEventBus().registerSynchronousEventHandlers(InvalidEventHandlerClass3.class))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -50,7 +49,7 @@ public class EventHandlerTest {
     void registeredSynchronousHandlerHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
-        eventStore.registerSynchronousEventHandlers(EventHandlerClass.class);
+        eventStore.getEventBus().registerSynchronousEventHandlers(EventHandlerClass.class);
         long start = currentTimeMillis();
         eventStore.append(new Event(myEvent));
 
@@ -63,7 +62,7 @@ public class EventHandlerTest {
     void registeredSynchronousHandlerHandlesEvent2() {
         SomeOtherEvent someOtherEvent = new SomeOtherEvent("data");
 
-        eventStore.registerSynchronousEventHandlers(EventHandlerClass.class);
+        eventStore.getEventBus().registerSynchronousEventHandlers(EventHandlerClass.class);
         eventStore.append(new Event(someOtherEvent, Type.of("SomeOtherEvent")));
 
         assertThat(EventHandlerClass.someOtherHandledEvent).isEqualTo(someOtherEvent);
@@ -73,7 +72,7 @@ public class EventHandlerTest {
     void eventsWithoutHandlerAreSkipped() {
         MyEvent myEvent = new MyEvent("data");
 
-        eventStore.registerSynchronousEventHandlers(NoHandlerClass.class);
+        eventStore.getEventBus().registerSynchronousEventHandlers(NoHandlerClass.class);
         eventStore.append(new Event(myEvent)); // skipped, no exception
     }
 
@@ -81,7 +80,7 @@ public class EventHandlerTest {
     void registeredAsynchronousHandlerHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
-        eventStore.registerAsynchronousEventHandlers(EventHandlerClass.class);
+        eventStore.getEventBus().registerAsynchronousEventHandlers(EventHandlerClass.class);
         long start = currentTimeMillis();
         eventStore.append(new Event(myEvent));
 
@@ -94,7 +93,7 @@ public class EventHandlerTest {
     void registeredSynchronousHandlerInstanceHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
-        eventStore.registerSynchronousEventHandlers(new EventHandlerClass());
+        eventStore.getEventBus().registerSynchronousEventHandlers(new EventHandlerClass());
         long start = currentTimeMillis();
         eventStore.append(new Event(myEvent));
 
@@ -107,7 +106,7 @@ public class EventHandlerTest {
     void registeredAsynchronousHandlerInstanceHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
-        eventStore.registerAsynchronousEventHandlers(new EventHandlerClass());
+        eventStore.getEventBus().registerAsynchronousEventHandlers(new EventHandlerClass());
         long start = currentTimeMillis();
         eventStore.append(new Event(myEvent));
 
@@ -121,7 +120,7 @@ public class EventHandlerTest {
         MyEvent myEvent = new MyEvent("data");
         MyOtherEvent myOtherEvent = new MyOtherEvent("data");
 
-        eventStore.registerSynchronousEventHandlers(MultiEventHandlerClass.class);
+        eventStore.getEventBus().registerSynchronousEventHandlers(MultiEventHandlerClass.class);
         eventStore.append(new Event(myEvent));
         eventStore.append(new Event(myOtherEvent));
 
@@ -134,7 +133,7 @@ public class EventHandlerTest {
         MyEvent myEvent = new MyEvent("data");
         MyOtherEvent myOtherEvent = new MyOtherEvent("data");
 
-        eventStore.registerAsynchronousEventHandlers(MultiEventHandlerClass.class);
+        eventStore.getEventBus().registerAsynchronousEventHandlers(MultiEventHandlerClass.class);
         eventStore.append(new Event(myEvent));
         eventStore.append(new Event(myOtherEvent));
 
@@ -148,7 +147,7 @@ public class EventHandlerTest {
     void registeredAsynchronousHandlerLogsExceptionAsWarning() throws InterruptedException {
         MyEvent myEvent = new MyEvent("data");
 
-        eventStore.registerAsynchronousEventHandlers(ThrowingEventHandlerClass.class);
+        eventStore.getEventBus().registerAsynchronousEventHandlers(ThrowingEventHandlerClass.class);
         eventStore.append(new Event(myEvent));
 
         Thread.sleep(1000); // wait for log message
@@ -168,7 +167,7 @@ public class EventHandlerTest {
             myEvents.add(myOtherEvent);
         }
 
-        eventStore.registerAsynchronousEventHandlers(RecordingEventHandlerClass.class);
+        eventStore.getEventBus().registerAsynchronousEventHandlers(RecordingEventHandlerClass.class);
         long start = currentTimeMillis();
         events.forEach(event -> eventStore.append(event));
         System.out.println(RecordingEventHandlerClass.myHandledEvents.size() + " events published in " +
@@ -197,12 +196,12 @@ public class EventHandlerTest {
             myEvents.add(myOtherEvent);
         }
 
-        eventStore.registerSynchronousEventHandlers(RecordingEventHandlerClass.class);
+        eventStore.getEventBus().registerSynchronousEventHandlers(RecordingEventHandlerClass.class);
         events.forEach(event -> eventStore.append(event));
         assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2); // 2 different events
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
 
-        eventStore.replay(SequencePosition.of(42));
+        eventStore.getEventBus().replay(SequencePosition.of(42));
 
         assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42);
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
@@ -222,12 +221,12 @@ public class EventHandlerTest {
             myEvents.add(myOtherEvent);
         }
 
-        eventStore.registerAsynchronousEventHandlers(RecordingEventHandlerClass.class);
+        eventStore.getEventBus().registerAsynchronousEventHandlers(RecordingEventHandlerClass.class);
         events.forEach(event -> eventStore.append(event));
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
 
-        eventStore.replay(SequencePosition.of(42));
+        eventStore.getEventBus().replay(SequencePosition.of(42));
 
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
@@ -235,7 +234,7 @@ public class EventHandlerTest {
 
     public static class RecordingEventHandlerClass {
 
-        private static List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
+        private static final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
 
         @ResetHandler
         private void resetHandledEvents() {
