@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -50,7 +51,7 @@ public class StateViewModelTest {
         StateManager stateManager = eventStore.getStateManager();
         State<MyEntity> state = stateManager.load(MyEntity.class, query);
 
-        MyEntity entity = state.getEntity();
+        MyEntity entity = state.getEntity().get();
         // < business rules validation and decision-making (state change or automation) >
 
         state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
@@ -59,6 +60,24 @@ public class StateViewModelTest {
         assertThat(entity.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, event3);
+    }
+
+    @Test
+    void createsEmptyStateForStateConstructorAndNoEvents() {
+        // Arrange
+        eventStore.append();
+        Query query = Query
+                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
+                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
+
+        // Act (just like in a command handler)
+        StateManager stateManager = eventStore.getStateManager();
+        State<MyEntity> state = stateManager.load(MyEntity.class, query);
+
+        Optional<MyEntity> optionalEntity = state.getEntity();
+        // < business rules validation and decision-making (state change or automation) >
+
+        assertThat(optionalEntity).isEmpty();
     }
 
     @Test
@@ -75,7 +94,7 @@ public class StateViewModelTest {
         StateManager stateManager = eventStore.getStateManager();
         State<MyEntityWithoutStateConstructor> state = stateManager.load(MyEntityWithoutStateConstructor.class, query);
 
-        MyEntityWithoutStateConstructor entity = state.getEntity();
+        MyEntityWithoutStateConstructor entity = state.getEntity().get();
         // < business rules validation and decision-making (state change or automation) >
 
         state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
@@ -100,7 +119,7 @@ public class StateViewModelTest {
         StateManager stateManager = eventStore.getStateManager();
         State<MyEntityWithoutStateConstructor> state = stateManager.load(new MyEntityWithoutStateConstructor(), query);
 
-        MyEntityWithoutStateConstructor entity = state.getEntity();
+        MyEntityWithoutStateConstructor entity = state.getEntity().get();
         // < business rules validation and decision-making (state change or automation) >
 
         state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
@@ -125,7 +144,7 @@ public class StateViewModelTest {
         StateManager stateManager = eventStore.getStateManager();
         State<MyEntityWithoutStateConstructor> state = stateManager.load(new MyEntityWithoutStateConstructor(), query);
 
-        MyEntityWithoutStateConstructor entity = state.getEntity();
+        MyEntityWithoutStateConstructor entity = state.getEntity().get();
         // < business rules validation and decision-making (state change or automation) >
 
         var concurrentlySavedMyEvent = new MyEvent(MY_ENTITY_ID, "4");

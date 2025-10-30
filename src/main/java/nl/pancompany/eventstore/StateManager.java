@@ -1,6 +1,5 @@
 package nl.pancompany.eventstore;
 
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -23,9 +22,7 @@ public class StateManager {
 
     public class State<T> {
 
-        @Getter
         private final T entity;
-        @Getter(PACKAGE)
         private final Class<T> stateClass;
         private final Query query;
         @Setter(PACKAGE)
@@ -43,6 +40,21 @@ public class StateManager {
             this.stateClass = stateClass;
             this.query = query;
         }
+
+        public void apply(Object event, Tag tag) {
+            if (entity == null) {
+                return;
+            }
+            apply(event, Tags.and(tag), Type.of(event.getClass()));
+        }
+
+        public void apply(Object event, Tags tags) {
+            if (entity == null) {
+                return;
+            }
+            apply(event, tags, Type.of(event.getClass()));
+        }
+
 
         public void apply(Object event, Tag tag, Type type) {
             if (entity == null) {
@@ -72,6 +84,13 @@ public class StateManager {
             }
         }
 
+        public Optional<T> getEntity() {
+            return Optional.ofNullable(this.entity);
+        }
+
+        Class<T> getStateClass() {
+            return this.stateClass;
+        }
     }
 
     private final EventStore eventStore;
@@ -80,15 +99,21 @@ public class StateManager {
     public <T> State<T> load(T emptyStateInstance, Query query) {
         requireNonNull(emptyStateInstance);
         List<SequencedEvent> events = eventStore.read(query);
+        if (events.isEmpty()) {
+            return new State<T>(null, null, null);
+        }
         State<T> state = new State<>(emptyStateInstance, query);
         executeEventSourcedCallbacks(state, events);
         return state;
     }
 
     public <T> State<T> load(Class<T> stateClass, Query query) {
+        List<SequencedEvent> events = eventStore.read(query);
+        if (events.isEmpty()) {
+            return new State<>(null, null, null);
+        }
         Optional<ConstructorCallback<T>> constructorWithEventParamCallBack = getStateConstructorCallback(stateClass);
         boolean createEmptyState = constructorWithEventParamCallBack.isEmpty();
-        List<SequencedEvent> events = eventStore.read(query);
         State<T> state = createEmptyState ? createEmptyState(stateClass, query) :
                 // Use the first event for creating the initial state
                 createState(constructorWithEventParamCallBack.get(), events.getFirst(), query);
@@ -125,7 +150,7 @@ public class StateManager {
         stateClassMethods.forEach(method -> method.setAccessible(true));
         return stateClassMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
-                method -> new InvocableMethod(state.getEntity(), method)
+                method -> new InvocableMethod(state.getEntity().get(), method)
         ));
     }
 
