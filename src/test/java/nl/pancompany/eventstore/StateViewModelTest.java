@@ -1,6 +1,5 @@
 package nl.pancompany.eventstore;
 
-import nl.pancompany.eventstore.StateManager.State;
 import nl.pancompany.eventstore.StateManager.StateManagerOptimisticLockingException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
