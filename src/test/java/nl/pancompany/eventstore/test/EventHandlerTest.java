@@ -1,6 +1,10 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.test;
 
-import nl.pancompany.eventstore.EventStore.SequencePosition;
+import nl.pancompany.eventstore.EventStore;
+import nl.pancompany.eventstore.annotation.EventHandler;
+import nl.pancompany.eventstore.annotation.ResetHandler;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.query.Type;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -225,7 +229,7 @@ public class EventHandlerTest {
         assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2); // 2 different events
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
 
-        eventStore.getEventBus().replay(SequencePosition.of(42));
+        eventStore.getEventBus().replay(EventStore.SequencePosition.of(42));
 
         assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42);
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
@@ -250,7 +254,7 @@ public class EventHandlerTest {
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
 
-        eventStore.getEventBus().replay(SequencePosition.of(42));
+        eventStore.getEventBus().replay(EventStore.SequencePosition.of(42));
 
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));

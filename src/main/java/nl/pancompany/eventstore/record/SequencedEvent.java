@@ -1,4 +1,8 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.record;
+
+import nl.pancompany.eventstore.EventStore;
+import nl.pancompany.eventstore.query.Tag;
+import nl.pancompany.eventstore.query.Type;
 
 import java.util.Set;
 

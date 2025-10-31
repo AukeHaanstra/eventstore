@@ -1,4 +1,4 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.exception;
 
 public class StateConstructionFailedException extends RuntimeException {
 

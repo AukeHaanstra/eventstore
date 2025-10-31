@@ -1,5 +1,11 @@
 package nl.pancompany.eventstore;
 
+import nl.pancompany.eventstore.annotation.StateCreator;
+import nl.pancompany.eventstore.exception.StateConstructionFailedException;
+import nl.pancompany.eventstore.query.Type;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.SequencedEvent;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -8,7 +14,7 @@ import java.util.stream.Collectors;
 
 import static java.util.function.Function.identity;
 import static nl.pancompany.eventstore.State.uninitializedState;
-import static nl.pancompany.eventstore.Type.getTypeForAnnotatedParameter;
+import static nl.pancompany.eventstore.query.Type.getTypeForAnnotatedParameter;
 
 class InitialStateCreator<T> {
 

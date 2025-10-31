@@ -2,6 +2,7 @@ package nl.pancompany.eventstore;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.util.List;
 import java.util.Optional;

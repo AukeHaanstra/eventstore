@@ -1,9 +1,10 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.annotation;
 
 import java.lang.annotation.*;
 
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD})
-public @interface ResetHandler {
+public @interface EventSourced {
+    String type() default "";
 }

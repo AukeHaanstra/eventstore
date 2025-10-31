@@ -2,6 +2,15 @@ package nl.pancompany.eventstore;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import nl.pancompany.eventstore.exception.AppendConditionNotSatisfied;
+import nl.pancompany.eventstore.query.Query;
+import nl.pancompany.eventstore.query.QueryItem;
+import nl.pancompany.eventstore.query.Tag;
+import nl.pancompany.eventstore.query.Type;
+import nl.pancompany.eventstore.record.AppendCondition;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.ReadOptions;
+import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.util.*;
 import java.util.concurrent.locks.Lock;
@@ -160,8 +169,8 @@ public class EventStore implements AutoCloseable {
             sequencePositionsFromSelection = new HashSet<>(allSequencePositions);
         } else {
             sequencePositionsFromSelection = new HashSet<>(allSequencePositions.subList(
-                    options.startingPosition.value,
-                    options.stopPosition == null ? allSequencePositions.size() : options.stopPosition.value));
+                    options.startingPosition().value(),
+                    options.stopPosition() == null ? allSequencePositions.size() : options.stopPosition().value()));
         }
         return sequencePositionsFromSelection;
     }
@@ -169,7 +178,7 @@ public class EventStore implements AutoCloseable {
     private List<SequencedEvent> sequencePositionsToEvents(Set<SequencePosition> querySequencePositions) {
         return querySequencePositions.stream()
                 .sorted()
-                .map(position -> storedEvents.get(position.value))
+                .map(position -> storedEvents.get(position.value()))
                 .toList();
     }
 
@@ -194,111 +203,4 @@ public class EventStore implements AutoCloseable {
         }
 
     }
-
-    public record AppendCondition(Query failIfEventsMatch, SequencePosition after) {
-
-        public static AppendConditionBuilder builder() {
-            return new AppendConditionBuilder();
-        }
-
-        public static class AppendConditionBuilder {
-            private Query failIfEventsMatch;
-            private SequencePosition after;
-
-            private AppendConditionBuilder() {
-            }
-
-            public FailIfEventsMatchAfterBuilder failIfEventsMatch(Query failIfEventsMatch) {
-                this.failIfEventsMatch = failIfEventsMatch;
-                return this.new FailIfEventsMatchAfterBuilder();
-            }
-
-            public class FailIfEventsMatchAfterBuilder {
-
-                public AppendConditionBuilder after(int sequencePosition) {
-                    AppendConditionBuilder.this.after = SequencePosition.of(sequencePosition);
-                    return AppendConditionBuilder.this;
-                }
-
-                public AppendCondition build() {
-                    return AppendConditionBuilder.this.build();
-                }
-            }
-
-            public AppendCondition build() {
-                if (this.failIfEventsMatch == null) {
-                    throw new IllegalArgumentException("failIfEventsMatch must be set");
-                }
-                return new AppendCondition(this.failIfEventsMatch, this.after);
-            }
-        }
-    }
-
-    /**
-     * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}]
-     * @param stopPosition     Stop position, exclusive, possible range is [0, {@literal <last-position+1>}]
-     */
-    public record ReadOptions(SequencePosition startingPosition, SequencePosition stopPosition) {
-
-        public static ReadOptionsBuilder builder() {
-            return new ReadOptionsBuilder();
-        }
-
-        public static class ReadOptionsBuilder {
-
-            private SequencePosition startingPosition = SequencePosition.of(0);
-            private SequencePosition stopPosition;
-
-            private ReadOptionsBuilder() {
-            }
-
-            /**
-             * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}], Defaults to 0
-             * @return
-             */
-            public ReadOptionsBuilder withStartingPosition(int startingPosition) {
-                return withStartingPosition(SequencePosition.of(startingPosition));
-            }
-
-            /**
-             * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}], Defaults to 0
-             * @return
-             */
-            public ReadOptionsBuilder withStartingPosition(SequencePosition startingPosition) {
-                this.startingPosition = startingPosition;
-                return this;
-            }
-
-            /**
-             * @param stopPosition Stopping position, exclusive, possible range is [0, {@literal <last-position+1>}], Defaults to null (no stopping position)
-             * @return
-             */
-            public ReadOptionsBuilder withStoppingPosition(int stopPosition) {
-                return withStoppingPosition(SequencePosition.of(stopPosition));
-            }
-
-            /**
-             * @param stopPosition Stopping position, exclusive, possible range is [0, {@literal <last-position+1>}], Defaults to null (no stopping position)
-             * @return
-             */
-            public ReadOptionsBuilder withStoppingPosition(SequencePosition stopPosition) {
-                this.stopPosition = stopPosition;
-                return this;
-            }
-
-            public ReadOptions build() {
-                return new ReadOptions(this.startingPosition, this.stopPosition);
-            }
-
-        }
-
-    }
-
-    public class AppendConditionNotSatisfied extends Exception {
-
-        public AppendConditionNotSatisfied(String message) {
-            super(message);
-        }
-    }
-
 }

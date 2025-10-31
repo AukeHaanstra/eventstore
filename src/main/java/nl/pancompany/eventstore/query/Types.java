@@ -1,4 +1,4 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.query;
 
 import java.util.HashSet;
 import java.util.Arrays;
@@ -41,7 +41,7 @@ public class Types {
         return this;
     }
 
-    Set<Type> toSet() {
+    public Set<Type> toSet() {
         return new HashSet<>(types);
     }
 

@@ -1,6 +1,16 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.test;
 
+import nl.pancompany.eventstore.EventStore;
+import nl.pancompany.eventstore.StateManager;
 import nl.pancompany.eventstore.StateManager.StateManagerOptimisticLockingException;
+import nl.pancompany.eventstore.annotation.EventSourced;
+import nl.pancompany.eventstore.annotation.StateCreator;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.exception.StateConstructionFailedException;
+import nl.pancompany.eventstore.query.Query;
+import nl.pancompany.eventstore.query.Tag;
+import nl.pancompany.eventstore.query.Type;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

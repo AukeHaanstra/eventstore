@@ -1,6 +1,15 @@
 package nl.pancompany.eventstore;
 
 import lombok.extern.slf4j.Slf4j;
+import nl.pancompany.eventstore.annotation.EventSourced;
+import nl.pancompany.eventstore.exception.AppendConditionNotSatisfied;
+import nl.pancompany.eventstore.query.Query;
+import nl.pancompany.eventstore.query.Tag;
+import nl.pancompany.eventstore.query.Tags;
+import nl.pancompany.eventstore.query.Type;
+import nl.pancompany.eventstore.record.AppendCondition;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
@@ -10,7 +19,7 @@ import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 import static nl.pancompany.eventstore.State.uninitializedState;
-import static nl.pancompany.eventstore.Type.getTypeForAnnotatedParameter;
+import static nl.pancompany.eventstore.query.Type.getTypeForAnnotatedParameter;
 
 @Slf4j
 public class StateManager<T> {
@@ -110,11 +119,11 @@ public class StateManager<T> {
             sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type)).get();
         } else { // use query + append condition for storing event
             try {
-                sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type), EventStore.AppendCondition.builder()
+                sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type), AppendCondition.builder()
                         .failIfEventsMatch(query)
                         .after(sequencePositionLastSourcedEvent.value())
                         .build()).get();
-            } catch (EventStore.AppendConditionNotSatisfied e) {
+            } catch (AppendConditionNotSatisfied e) {
                 throw new StateManager.StateManagerOptimisticLockingException(
                         "A unmanaged state-modifying event was stored after event sourcing but before applying the " +
                                 "current state-modifying (event), please retry.", e);

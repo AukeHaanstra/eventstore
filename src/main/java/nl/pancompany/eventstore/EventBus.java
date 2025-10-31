@@ -1,7 +1,12 @@
 package nl.pancompany.eventstore;
 
 import lombok.extern.slf4j.Slf4j;
-import nl.pancompany.eventstore.EventStore.ReadOptions;
+import nl.pancompany.eventstore.annotation.EventHandler;
+import nl.pancompany.eventstore.annotation.ResetHandler;
+import nl.pancompany.eventstore.query.Query;
+import nl.pancompany.eventstore.query.Type;
+import nl.pancompany.eventstore.record.ReadOptions;
+import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;

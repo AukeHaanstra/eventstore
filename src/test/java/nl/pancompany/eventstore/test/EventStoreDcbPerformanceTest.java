@@ -1,5 +1,11 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.test;
 
+import nl.pancompany.eventstore.EventStore;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.query.Query;
+import nl.pancompany.eventstore.query.QueryItem;
+import nl.pancompany.eventstore.query.Type;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

@@ -1,7 +1,6 @@
-package nl.pancompany.eventstore;
+package nl.pancompany.eventstore.query;
 
 import java.util.HashSet;
-import java.util.Set;
 import java.util.Set;
 
 public class QueryItems {

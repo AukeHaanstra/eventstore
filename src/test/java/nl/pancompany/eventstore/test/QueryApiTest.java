@@ -1,11 +1,11 @@
-package nl.pancompany.eventstore.api;
+package nl.pancompany.eventstore.test;
 
-import nl.pancompany.eventstore.*;
+import nl.pancompany.eventstore.query.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;
 
-import static nl.pancompany.eventstore.Query.all;
+import static nl.pancompany.eventstore.query.Query.all;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
