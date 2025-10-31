@@ -17,6 +17,7 @@ public class StateManager<T> {
 
     private final EventStore eventStore;
     private final Class<T> stateClass;
+    private final InitialStateCreator<T> initialStateCreator;
     private final Query query;
     private State<T> state;
 
@@ -26,6 +27,7 @@ public class StateManager<T> {
     StateManager(EventStore eventStore, Class<T> stateClass, Query query) {
         this.eventStore = eventStore;
         this.stateClass = stateClass;
+        this.initialStateCreator = new InitialStateCreator<>(stateClass);
         this.query = query;
         this.state = uninitializedState(stateClass);
     }
@@ -68,6 +70,8 @@ public class StateManager<T> {
         try {
             if (state.isInitialized()) {
                 method.invoke(state.getState().get(), eventPayload);
+            } else {
+                throw new UnhandledEventException("Event sourced method could not be invoked because state has not been initialized.");
             }
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke handler method for event {}", eventPayload, e);
@@ -78,34 +82,39 @@ public class StateManager<T> {
 
     void load() {
         List<SequencedEvent> events = eventStore.read(query);
-        InitialStateCreator<T> initialStateCreator = new InitialStateCreator<>(stateClass);
         state = initialStateCreator.createState(events);
         setEventSourcedCallbacks();
         executeEventSourcedCallbacks();
     }
 
-    public void apply(Object event, Tag tag) {
-        apply(event, Tags.and(tag), Type.of(event.getClass()));
+    public void apply(Object eventPayload, Tag tag) {
+        apply(eventPayload, Tags.and(tag), Type.of(eventPayload.getClass()));
     }
 
-    public void apply(Object event, Tags tags) {
-        apply(event, tags, Type.of(event.getClass()));
+    public void apply(Object eventPayload, Tags tags) {
+        apply(eventPayload, tags, Type.of(eventPayload.getClass()));
     }
 
-    public void apply(Object event, Tag tag, Type type) {
-        apply(event, Tags.and(tag), type);
+    public void apply(Object eventPayload, Tag tag, Type type) {
+        apply(eventPayload, Tags.and(tag), type);
     }
 
-    public void apply(Object event, Tags tags, Type type) {
-        InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(type);
-        if (eventSourcedEventHandler != null) {
-            eventSourcedEventHandler.invoke(event);
+    public void apply(Object eventPayload, Tags tags, Type type) {
+        if (!state.isInitialized()) {
+            state = initialStateCreator.createState(eventPayload); // try create state from event
+        } else {
+            InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(type);
+            if (eventSourcedEventHandler != null) {
+                eventSourcedEventHandler.invoke(eventPayload);
+            } else {
+                throw new UnhandledEventException("Event could not be applied because there was no corresponding event handler");
+            }
         }
         if (sequencePositionLastSourcedEvent == null) { // No events sourced before
-            sequencePositionLastSourcedEvent = eventStore.append(new Event(event, tags.toSet(), type)).get();
+            sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type)).get();
         } else { // use query + append condition for storing event
             try {
-                sequencePositionLastSourcedEvent = eventStore.append(new Event(event, tags.toSet(), type), EventStore.AppendCondition.builder()
+                sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type), EventStore.AppendCondition.builder()
                         .failIfEventsMatch(query)
                         .after(sequencePositionLastSourcedEvent.value())
                         .build()).get();
@@ -124,6 +133,12 @@ public class StateManager<T> {
     public static class StateManagerOptimisticLockingException extends RuntimeException {
         public StateManagerOptimisticLockingException(String message, Throwable cause) {
             super(message, cause);
+        }
+    }
+
+    public static class UnhandledEventException extends RuntimeException {
+        public UnhandledEventException(String message) {
+            super(message);
         }
     }
 }

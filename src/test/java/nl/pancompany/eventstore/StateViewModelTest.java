@@ -67,23 +67,6 @@ public class StateViewModelTest {
     }
 
     @Test
-    void createsUninitializedStateForStateConstructorAndNoEvents() {
-        // Arrange
-        eventStore.append();
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
-
-        // Act (just like in a command handler)
-        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
-
-        Optional<MyState> optionalEntity = stateManager.getState();
-        // < business rules validation and decision-making (state change or automation) >
-
-        assertThat(optionalEntity).isEmpty();
-    }
-
-    @Test
     void rehydratesStateViewModelWithoutStateConstructor() {
         // Arrange
         eventStore.append(event0, event1,event2);
@@ -163,6 +146,66 @@ public class StateViewModelTest {
     void throwsException_WhenStateClassHasInvalidConstructor() {
         assertThatThrownBy(() -> eventStore.loadState(InvalidStateClass.class, Query.all()))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void createsUninitializedStateForStateConstructorAndNoEvents() {
+        // Arrange
+        eventStore.append();
+        Query query = Query
+                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
+                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+        Optional<MyState> optionalEntity = stateManager.getState();
+        // < business rules validation and decision-making (state change or automation) >
+
+        assertThat(optionalEntity).isEmpty();
+    }
+
+    @Test
+    void applyingRegularEventToUninitializedStateIsNotPossible() {
+        // Arrange
+        Query query = Query
+                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
+                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+
+        // < business rules validation and decision-making (state change or automation) >
+
+        assertThatThrownBy(() ->  stateManager.apply(myEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyEvent.class)))
+                .isInstanceOf(StateConstructionFailedException.class);
+    }
+
+    @Test
+    void applyingCreatorEventToUninitializedStateIsPossible() {
+        // Arrange
+        Query query = Query
+                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
+                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(myInitialEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyInitialEvent.class));
+        stateManager.apply(myEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyEvent.class));
+
+        // Assert
+        MyState state = stateManager.getState().get();
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent);
+        sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1);
     }
 
     private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {

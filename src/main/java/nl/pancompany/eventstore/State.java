@@ -31,10 +31,6 @@ class State<T> {
         return entity != null;
     }
 
-    boolean isUninitialized() {
-        return entity == null;
-    }
-
     static <U> State<U> uninitializedState(Class<U> stateClass) {
         return new State<>(null, stateClass, emptyList());
     }

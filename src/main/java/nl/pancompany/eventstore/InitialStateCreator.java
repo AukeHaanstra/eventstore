@@ -3,10 +3,7 @@ package nl.pancompany.eventstore;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.util.function.Function.identity;
@@ -22,7 +19,7 @@ class InitialStateCreator<T> {
     }
 
     State<T> createState(List<SequencedEvent> events) {
-        Map<Type, Constructor<T>> stateConstructors = getStateConstructor();
+        Map<Type, Constructor<T>> stateConstructors = getStateConstructors();
         if (stateConstructors.isEmpty()) {
             return createEmptyState(events);
         }
@@ -30,7 +27,7 @@ class InitialStateCreator<T> {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<Type, Constructor<T>> getStateConstructor() {
+    private Map<Type, Constructor<T>> getStateConstructors() {
         Set<Constructor<T>> stateClassConstructors = Arrays.stream(stateClass.getDeclaredConstructors())
                 .map(constructor -> ((Constructor<T>) constructor))
                 .filter(constructor -> constructor.isAnnotationPresent(StateCreator.class))
@@ -41,7 +38,7 @@ class InitialStateCreator<T> {
         if (validStateClassConstructors.size() != stateClassConstructors.size()) {
             throw new IllegalArgumentException("State Constructors with multiple parameters are not allowed.");
         }
-        stateClassConstructors.forEach(constructor -> constructor.setAccessible(true));
+        validStateClassConstructors.forEach(constructor -> constructor.setAccessible(true));
         return stateClassConstructors.stream().collect(Collectors.toMap(
                 this::getEventType,
                 identity()
@@ -49,9 +46,6 @@ class InitialStateCreator<T> {
     }
 
     private Type getEventType(Constructor<?> stateConstructor) {
-        if (stateConstructor.getParameters().length != 1) {
-            throw new IllegalArgumentException("State constructor must have exactly one parameter.");
-        }
         Class<?> declaredParemeterType = stateConstructor.getParameters()[0].getType();
         Annotation annotation = stateConstructor.getAnnotation(StateCreator.class);
         return getTypeForAnnotatedParameter(annotation, declaredParemeterType);
@@ -76,14 +70,30 @@ class InitialStateCreator<T> {
         }
     }
 
-    private State<T> createState(Map<Type, Constructor<T>> constructors, List<SequencedEvent> events) {
+    private State<T> createState(Map<Type, Constructor<T>> stateConstructors, List<SequencedEvent> events) {
         if (events.isEmpty()) {
             return uninitializedState(stateClass);
         }
         SequencedEvent firstEvent = events.getFirst();
         List<SequencedEvent> unprocessedEvents = events.subList(1, events.size());
-        Constructor<T> constructor = constructors.get(firstEvent.type());
+        Constructor<T> constructor = stateConstructors.get(firstEvent.type());
+        if (constructor == null) {
+            throw new StateConstructionFailedException(String.format("No state constructor found for event type %s.", firstEvent.type()));
+        }
         return new State<>(invoke(constructor, firstEvent.payload()), unprocessedEvents);
+    }
+
+    State<T> createState(Object firstEventPayload) {
+        return createState(Event.of(firstEventPayload, Type.of(firstEventPayload.getClass())));
+    }
+
+    State<T> createState(Event firstEvent) {
+        Map<Type, Constructor<T>> stateConstructors = getStateConstructors();
+        Constructor<T> constructor = stateConstructors.get(firstEvent.type());
+        if (constructor == null) {
+            throw new StateConstructionFailedException(String.format("No state constructor found for event type %s.", firstEvent.type()));
+        }
+        return new State<>(invoke(constructor, firstEvent.payload()), Collections.emptyList());
     }
 
     private T invoke(Constructor<T> constructor, Object eventPayload) {
