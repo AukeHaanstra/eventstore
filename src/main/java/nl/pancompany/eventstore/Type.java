@@ -38,7 +38,7 @@ public record Type(String type, Class<?> clazz) {
         return new Types(Set.of(this, Type.of(clazz)));
     }
 
-    public static Type getType(Annotation annotation, Class<?> declaredParemeterType) {
+    public static Type getTypeForAnnotatedParameter(Annotation annotation, Class<?> declaredParemeterType) {
         String parameterName = annotation.getClass().getSimpleName();
         String type = getAnnotationTypeElementValue(annotation);
         if (declaredParemeterType == Object.class && type.isBlank()) {

@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.EventStore.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +33,11 @@ public class EventStoreDcbTest {
     @BeforeEach
     void setUp() {
         eventStore = new EventStore();
+    }
+
+    @AfterEach
+    void tearDown() {
+        eventStore.close();
     }
 
     @Test

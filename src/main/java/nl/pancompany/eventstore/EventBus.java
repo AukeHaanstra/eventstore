@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore;
 
 import lombok.extern.slf4j.Slf4j;
+import nl.pancompany.eventstore.EventStore.ReadOptions;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -11,15 +12,17 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static java.util.Objects.requireNonNull;
+
 @Slf4j
 public class EventBus implements AutoCloseable {
 
     private final EventStore eventStore;
-    private final Map<Type, Set<InvocableMethod>> synchronousEventHandlers = new HashMap<>();
-    private final Map<Type, Set<InvocableMethod>> asynchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableEventHandler>> synchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableEventHandler>> asynchronousEventHandlers = new HashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private final Set<InvocableMethod> synchronousResetHandlers = new HashSet<>();
-    private final Set<InvocableMethod> asynchronousResetHandlers = new HashSet<>();
+    private final Set<Runnable> synchronousResetHandlers = new HashSet<>();
+    private final Set<Runnable> asynchronousResetHandlers = new HashSet<>();
 
     public EventBus(EventStore eventStore) {
         this.eventStore = eventStore;
@@ -53,21 +56,24 @@ public class EventBus implements AutoCloseable {
     }
 
     public void registerSynchronousEventHandlers(Class<?> eventHandlerClass) {
-
-        Object eventHandlerInstance = getInstance(eventHandlerClass);
+        Object eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, true);
         registerEventHandler(eventHandlerClass, eventHandlerInstance, true);
     }
 
     public void registerAsynchronousEventHandlers(Class<?> eventHandlerClass) {
-        Object eventHandlerInstance = getInstance(eventHandlerClass);
+        Object eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, false);
         registerEventHandler(eventHandlerClass, eventHandlerInstance, false);
     }
 
-    private static Object getInstance(Class<?> eventHandlerClass) {
+    private static Object createInstance(Class<?> eventHandlerClass) {
         try {
-            Constructor<?> noArgConstructor = eventHandlerClass.getDeclaredConstructors()[0];
+            Constructor<?> noArgConstructor = Arrays.stream(eventHandlerClass.getDeclaredConstructors())
+                    .filter(constructor -> constructor.getParameterCount() == 0)
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(String.format("Event handler class must have exactly one no-args " +
+                            "constructor. Class: %s", eventHandlerClass.getName())));
             noArgConstructor.setAccessible(true);
             return noArgConstructor.newInstance();
         } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
@@ -76,11 +82,13 @@ public class EventBus implements AutoCloseable {
     }
 
     public void registerSynchronousEventHandlers(Object eventHandlerInstance) {
+        requireNonNull(eventHandlerInstance);
         registerResetHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
         registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
     }
 
     public void registerAsynchronousEventHandlers(Object eventHandlerInstance) {
+        requireNonNull(eventHandlerInstance);
         registerResetHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
         registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
     }
@@ -92,19 +100,29 @@ public class EventBus implements AutoCloseable {
             throw new IllegalArgumentException("Multiple reset handlers are not allowed.");
         }
         resetHandlerMethods.forEach(method -> method.setAccessible(true));
-        Set<InvocableMethod> resetHandlers = synchronous ? synchronousResetHandlers : asynchronousResetHandlers;
-        resetHandlerMethods.stream().findFirst().ifPresent(method -> resetHandlers.add(new InvocableMethod(instance, method)));
+        Set<Runnable> resetHandlers = synchronous ? synchronousResetHandlers : asynchronousResetHandlers;
+        resetHandlerMethods.stream().findFirst().ifPresent(method -> resetHandlers.add(() -> invokeResetHandler(method, instance)));
+    }
+
+    private static void invokeResetHandler(Method method, Object instance) {
+        try {
+            method.invoke(instance);
+        } catch (IllegalAccessException e) {
+            log.warn("Could not invoke reset handler {}", method, e);
+        } catch (InvocationTargetException e) {
+            log.warn("Reset handler threw exception. Method: {}", method, e);
+        }
     }
 
     private void registerEventHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
         Set<Method> eventHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
                 method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
         eventHandlerMethods.forEach(method -> method.setAccessible(true));
-        Map<Type, InvocableMethod> newEventHandlers = eventHandlerMethods.stream().collect(Collectors.toMap(
+        Map<Type, InvocableEventHandler> newEventHandlers = eventHandlerMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
-                method -> new InvocableMethod(instance, method)
+                method -> event -> invoke(method, instance, event)
         ));
-        Map<Type, Set<InvocableMethod>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
+        Map<Type, Set<InvocableEventHandler>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
                 .add(newEventHandlers.get(key)));
     }
@@ -112,15 +130,7 @@ public class EventBus implements AutoCloseable {
     private Type getEventType(Method eventHandlerMethod) {
         Class<?> declaredParemeterType = eventHandlerMethod.getParameters()[0].getType();
         EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
-        if (declaredParemeterType == Object.class && annotation.type().isBlank()) {
-            throw new IllegalArgumentException("EventHandler annotation must have a type defined when the first parameter is Object.");
-        } else if (declaredParemeterType != Object.class && !annotation.type().isBlank()) {
-            throw new IllegalArgumentException("Either declare an @EventHandler(type = ..) with an Object parameter," +
-                    "or declare @EventHandler with a typed parameter.");
-        } else if (declaredParemeterType == Object.class) {
-            return Type.of(annotation.type());
-        }
-        return Type.of(declaredParemeterType);
+        return Type.getTypeForAnnotatedParameter(annotation, declaredParemeterType);
     }
 
     /**
@@ -129,45 +139,33 @@ public class EventBus implements AutoCloseable {
      * @param end end position, exclusive
      */
     public void replay(EventStore.SequencePosition end) {
-        List<SequencedEvent> eventsToReplay = eventStore.read(Query.all(), EventStore.ReadOptions.builder()
-                .stoppingPosition(end)
+        List<SequencedEvent> eventsToReplay = eventStore.read(Query.all(), ReadOptions.builder()
+                .withStoppingPosition(end)
                 .build());
-        synchronousResetHandlers.forEach(EventBus::invoke);
-        asynchronousResetHandlers.forEach(resetHandler -> executor.submit(() -> invoke(resetHandler)));
+        synchronousResetHandlers.forEach(Runnable::run);
+        asynchronousResetHandlers.forEach(executor::submit);
         eventsToReplay.forEach(this::invokeEventHandlers);
-    }
-
-    private static void invoke(InvocableMethod instance) {
-        try {
-            instance.method().invoke(instance.objectWithMethod());
-        } catch (IllegalAccessException e) {
-            log.warn("Could not invoke reset handler method.", e);
-        } catch (InvocationTargetException e) {
-            log.warn("Invoked reset handler threw exception", e);
-        }
     }
 
     void invokeEventHandlers(SequencedEvent sequencedEvent) {
         if (asynchronousEventHandlers.containsKey(sequencedEvent.type())) {
-            executor.submit(() -> asynchronousEventHandlers.get(sequencedEvent.type())
-                    .forEach(instance -> invoke(instance, sequencedEvent)));
+            executor.submit(() -> asynchronousEventHandlers.get(sequencedEvent.type()).forEach(
+                    eventHandler -> eventHandler.invoke(sequencedEvent.payload())
+            ));
         }
         if (synchronousEventHandlers.containsKey(sequencedEvent.type())) {
             synchronousEventHandlers.get(sequencedEvent.type())
-                    .forEach(instance -> invoke(instance, sequencedEvent));
+                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload()));
         }
     }
 
-    private static void invoke(InvocableMethod instance, SequencedEvent event) {
-        if (instance == null) {
-            return; // skip event if no handler
-        }
+    private static void invoke(Method method, Object instance, Object eventPayload) {
         try {
-            instance.method().invoke(instance.objectWithMethod(), event.payload());
+            method.invoke(instance, eventPayload);
         } catch (IllegalAccessException e) {
-            log.warn("Could not invoke handler method for event {}", event, e);
+            log.warn("Could not invoke handler method for event {}", eventPayload, e);
         } catch (InvocationTargetException e) {
-            log.warn("Invoked handler threw exception for event {}", event, e);
+            log.warn("Invoked handler threw exception for event {}", eventPayload, e);
         }
     }
 

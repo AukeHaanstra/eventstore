@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.StateManager.StateManagerOptimisticLockingException;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -36,6 +37,11 @@ public class StateViewModelTest {
         event3 = Event.of(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID));
     }
 
+    @AfterEach
+    void tearDown() {
+        eventStore.close();
+    }
+
     @Test
     void rehydratesStateViewModel() {
         // Arrange
@@ -47,22 +53,21 @@ public class StateViewModelTest {
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
-        StateManager stateManager = eventStore.getStateManager();
-        State<MyEntity> state = stateManager.load(MyEntity.class, query);
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
 
-        MyEntity entity = state.getEntity().get();
+        MyState state = stateManager.getState().get();
         // < business rules validation and decision-making (state change or automation) >
 
-        state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
+        stateManager.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
 
         // Assert
-        assertThat(entity.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, event3);
     }
 
     @Test
-    void createsEmptyStateForStateConstructorAndNoEvents() {
+    void createsUninitializedStateForStateConstructorAndNoEvents() {
         // Arrange
         eventStore.append();
         Query query = Query
@@ -70,10 +75,9 @@ public class StateViewModelTest {
                 .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
 
         // Act (just like in a command handler)
-        StateManager stateManager = eventStore.getStateManager();
-        State<MyEntity> state = stateManager.load(MyEntity.class, query);
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
 
-        Optional<MyEntity> optionalEntity = state.getEntity();
+        Optional<MyState> optionalEntity = stateManager.getState();
         // < business rules validation and decision-making (state change or automation) >
 
         assertThat(optionalEntity).isEmpty();
@@ -90,16 +94,15 @@ public class StateViewModelTest {
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
-        StateManager stateManager = eventStore.getStateManager();
-        State<MyEntityWithoutStateConstructor> state = stateManager.load(MyEntityWithoutStateConstructor.class, query);
+        StateManager<MyStateWithoutStateConstructor> stateManager = eventStore.loadState(MyStateWithoutStateConstructor.class, query);
 
-        MyEntityWithoutStateConstructor entity = state.getEntity().get();
+        MyStateWithoutStateConstructor state = stateManager.getState().get();
         // < business rules validation and decision-making (state change or automation) >
 
-        state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
+        stateManager.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
 
         // Assert
-        assertThat(entity.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, event3);
     }
@@ -115,16 +118,15 @@ public class StateViewModelTest {
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
-        StateManager stateManager = eventStore.getStateManager();
-        State<MyEntityWithoutStateConstructor> state = stateManager.load(new MyEntityWithoutStateConstructor(), query);
+        StateManager<MyStateWithoutStateConstructor> stateManager = eventStore.loadState(new MyStateWithoutStateConstructor(), query);
 
-        MyEntityWithoutStateConstructor entity = state.getEntity().get();
+        MyStateWithoutStateConstructor state = stateManager.getState().get();
         // < business rules validation and decision-making (state change or automation) >
 
-        state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
+        stateManager.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
 
         // Assert
-        assertThat(entity.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, event3);
     }
@@ -140,34 +142,50 @@ public class StateViewModelTest {
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
         // Act (just like in a command handler)
-        StateManager stateManager = eventStore.getStateManager();
-        State<MyEntityWithoutStateConstructor> state = stateManager.load(new MyEntityWithoutStateConstructor(), query);
+        StateManager<MyStateWithoutStateConstructor> stateManager = eventStore.loadState(new MyStateWithoutStateConstructor(), query);
 
-        MyEntityWithoutStateConstructor entity = state.getEntity().get();
+        MyStateWithoutStateConstructor state = stateManager.getState().get();
         // < business rules validation and decision-making (state change or automation) >
 
         var concurrentlySavedMyEvent = new MyEvent(MY_ENTITY_ID, "4");
         Event concurrentlySavedEvent = Event.of(concurrentlySavedMyEvent, Tag.of("MyEntity", MY_ENTITY_ID));
         eventStore.append(concurrentlySavedEvent);
 
-        assertThatThrownBy(() -> state.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class)))
+        assertThatThrownBy(() -> stateManager.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class)))
                 .isInstanceOf(StateManagerOptimisticLockingException.class);
         // Assert
-        assertThat(entity.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, concurrentlySavedEvent);
+    }
+
+    @Test
+    void throwsException_WhenStateClassHasInvalidConstructor() {
+        assertThatThrownBy(() -> eventStore.loadState(InvalidStateClass.class, Query.all()))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
         return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
-    private static class MyEntity {
+    private static class InvalidStateClass {
 
         private final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
 
-        @StateConstructor
-        private MyEntity(MyInitialEvent event) {
+        @StateCreator
+        private InvalidStateClass(MyInitialEvent event, MyOtherEvent myOtherEvent) {
+            myHandledEvents.add(event);
+        }
+
+    }
+
+    private static class MyState {
+
+        private final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
+
+        @StateCreator
+        private MyState(MyInitialEvent event) {
             myHandledEvents.add(event);
         }
 
@@ -188,7 +206,7 @@ public class StateViewModelTest {
 
     }
 
-    private static class MyEntityWithoutStateConstructor {
+    private static class MyStateWithoutStateConstructor {
 
         private final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
 

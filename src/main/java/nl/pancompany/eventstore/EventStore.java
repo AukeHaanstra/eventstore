@@ -8,9 +8,11 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import static java.util.Objects.requireNonNull;
+
 // TODO: Passage-of-time events https://verraes.net/2019/05/patterns-for-decoupling-distsys-passage-of-time-event/
 @Slf4j
-public class EventStore {
+public class EventStore implements AutoCloseable {
 
     private final List<SequencedEvent> storedEvents = new ArrayList<>();
     private final Map<Tag, Set<SequencePosition>> tagPositions = new HashMap<>();
@@ -22,8 +24,18 @@ public class EventStore {
     @Getter
     private final EventBus eventBus = new EventBus(this);
 
-    public StateManager getStateManager() {
-        return new StateManager(this);
+    @SuppressWarnings("unchecked")
+    public <T> StateManager<T> loadState(T emptyStateInstance, Query query) {
+        requireNonNull(emptyStateInstance);
+        var stateManager = new StateManager<>(this, (Class<T>) emptyStateInstance.getClass(), query);
+        stateManager.load(emptyStateInstance);
+        return stateManager;
+    }
+
+    public <T> StateManager<T> loadState(Class<T> stateClass, Query query) {
+        var stateManager = new StateManager<>(this, stateClass, query);
+        stateManager.load();
+        return stateManager;
     }
 
     /**
@@ -31,10 +43,10 @@ public class EventStore {
      *
      * @param events The event instances that wrap a payload (the raw event).
      */
-    public void append(Event... events) {
+    public Optional<SequencePosition> append(Event... events) {
         try {
-            append(List.of(events), null);
-        } catch (AppendConditionNotSatisfied e) {
+            return append(List.of(events), null);
+        } catch (AppendConditionNotSatisfied e) { // no append condition, so irrelevant
             throw new IllegalStateException(e);
         }
     }
@@ -44,10 +56,10 @@ public class EventStore {
      *
      * @param events The event instances that wrap a payload (the raw event).
      */
-    public void append(List<Event> events) {
+    public Optional<SequencePosition> append(List<Event> events) {
         try {
-            append(events, null);
-        } catch (AppendConditionNotSatisfied e) {
+            return append(events, null);
+        } catch (AppendConditionNotSatisfied e) { // no append condition, so irrelevant
             throw new IllegalStateException(e);
         }
     }
@@ -57,8 +69,8 @@ public class EventStore {
      *
      * @param event The event instances that wrap a payload (the raw event).
      */
-    public void append(Event event, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
-        append(List.of(event), appendCondition);
+    public Optional<SequencePosition> append(Event event, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+        return append(List.of(event), appendCondition);
     }
 
     /**
@@ -66,28 +78,30 @@ public class EventStore {
      *
      * @param events The event instances that wrap a payload (the raw event).
      */
-    public void append(List<Event> events, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+    public Optional<SequencePosition> append(List<Event> events, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
         List<SequencedEvent> addedEvents = new ArrayList<>();
+        SequencePosition lastInsertPosition = null;
         try {
             writeLock.lock();
             if (appendCondition != null) {
                 checkWhetherEventsFailAppendCondition(appendCondition);
             }
             for (Event event : events) {
-                SequencePosition insertPosition = SequencePosition.of(storedEvents.size());
-                SequencedEvent storedEvent = new SequencedEvent(event, insertPosition);
+                lastInsertPosition = SequencePosition.of(storedEvents.size());
+                SequencedEvent storedEvent = new SequencedEvent(event, lastInsertPosition);
                 storedEvents.add(storedEvent);
                 addedEvents.add(storedEvent);
-                allSequencePositions.add(insertPosition);
+                allSequencePositions.add(lastInsertPosition);
                 for (Tag tag : event.tags()) {
-                    tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(insertPosition); // add to tag-index
+                    tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(lastInsertPosition); // add to tag-index
                 }
-                typePositions.computeIfAbsent(event.type(), k -> new HashSet<>()).add(insertPosition); // add to type-index
+                typePositions.computeIfAbsent(event.type(), k -> new HashSet<>()).add(lastInsertPosition); // add to type-index
             }
         } finally {
             writeLock.unlock();
         }
         addedEvents.forEach(eventBus::invokeEventHandlers);
+        return Optional.ofNullable(lastInsertPosition);
     }
 
     private void checkWhetherEventsFailAppendCondition(AppendCondition appendCondition) throws AppendConditionNotSatisfied {
@@ -160,13 +174,18 @@ public class EventStore {
                 .toList();
     }
 
+    @Override
+    public void close() {
+        eventBus.close();
+    }
+
     public record SequencePosition(int value) implements Comparable<SequencePosition> {
 
         public static SequencePosition of(int i) {
             return new SequencePosition(i);
         }
 
-        public SequencePosition incrementAndGet() {
+        private SequencePosition incrementAndGet() {
             return new SequencePosition(value + 1);
         }
 
@@ -255,15 +274,15 @@ public class EventStore {
              * @param stopPosition Stopping position, exclusive, possible range is [0, {@literal <last-position+1>}], Defaults to null (no stopping position)
              * @return
              */
-            public ReadOptionsBuilder stoppingPosition(int stopPosition) {
-                return stoppingPosition(SequencePosition.of(stopPosition));
+            public ReadOptionsBuilder withStoppingPosition(int stopPosition) {
+                return withStoppingPosition(SequencePosition.of(stopPosition));
             }
 
             /**
              * @param stopPosition Stopping position, exclusive, possible range is [0, {@literal <last-position+1>}], Defaults to null (no stopping position)
              * @return
              */
-            public ReadOptionsBuilder stoppingPosition(SequencePosition stopPosition) {
+            public ReadOptionsBuilder withStoppingPosition(SequencePosition stopPosition) {
                 this.stopPosition = stopPosition;
                 return this;
             }

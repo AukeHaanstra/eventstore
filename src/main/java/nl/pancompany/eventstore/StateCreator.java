@@ -5,6 +5,6 @@ import java.lang.annotation.*;
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.CONSTRUCTOR})
-public @interface StateConstructor {
+public @interface StateCreator {
     String type() default "";
 }

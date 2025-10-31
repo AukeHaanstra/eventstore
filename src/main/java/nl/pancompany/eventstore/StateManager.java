@@ -1,100 +1,124 @@
 package nl.pancompany.eventstore;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
-import static lombok.AccessLevel.PACKAGE;
+import static nl.pancompany.eventstore.State.uninitializedState;
+import static nl.pancompany.eventstore.Type.getTypeForAnnotatedParameter;
 
 @Slf4j
-@RequiredArgsConstructor(access = PACKAGE)
-public class StateManager {
+public class StateManager<T> {
 
     private final EventStore eventStore;
+    private final Class<T> stateClass;
+    private final Query query;
+    private State<T> state;
+
+    private EventStore.SequencePosition sequencePositionLastSourcedEvent;
+    private Map<Type, InvocableEventHandler> eventSourcedCallbacks;
+
+    StateManager(EventStore eventStore, Class<T> stateClass, Query query) {
+        this.eventStore = eventStore;
+        this.stateClass = stateClass;
+        this.query = query;
+        this.state = uninitializedState(stateClass);
+    }
 
     @SuppressWarnings("unchecked")
-    public <T> State<T> load(T emptyStateInstance, Query query) {
+    void load(T emptyStateInstance) {
         requireNonNull(emptyStateInstance);
-        List<SequencedEvent> events = eventStore.read(query);
-        if (events.isEmpty()) {
-            return State.emptyState((Class<T>) emptyStateInstance.getClass());
-        }
-        State<T> state = new State<>(emptyStateInstance, query, events, eventStore);
-        return state;
+        state = new State<>(emptyStateInstance, eventStore.read(query));
+        setEventSourcedCallbacks();
+        executeEventSourcedCallbacks();
     }
 
-    public <T> State<T> load(Class<T> stateClass, Query query) {
-        List<SequencedEvent> events = eventStore.read(query);
-        if (events.isEmpty()) {
-            return State.emptyState(stateClass);
-        }
-        Optional<ConstructorCallback<T>> constructorWithEventParamCallBack = getStateConstructorCallback(stateClass);
-        boolean createEmptyState = constructorWithEventParamCallBack.isEmpty();
-
-        State<T> state = createEmptyState ? createEmptyState(stateClass, query, events.subList(0 , events.size()), eventStore) :
-                // Use the first event for creating the initial state
-                createState(constructorWithEventParamCallBack.get(), events.getFirst(), query, events.subList(1, events.size()), eventStore);
-        return state;
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> Optional<ConstructorCallback<T>> getStateConstructorCallback(Class<T> stateClass) {
-        Set<Constructor<T>> stateClassConstructors = Arrays.stream(stateClass.getDeclaredConstructors())
-                .map(constructor -> ((Constructor<T>) constructor))
-                .filter(constructor -> constructor.isAnnotationPresent(StateConstructor.class))
+    private void setEventSourcedCallbacks() {
+        Set<Method> stateClassMethods = Arrays.stream(stateClass.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(EventSourced.class))
                 .collect(Collectors.toSet());
-        stateClassConstructors.forEach(constructor -> constructor.setAccessible(true));
-        return stateClassConstructors.stream()
-                .map(constructor ->new ConstructorCallback<>(getEventType(constructor), constructor, false))
-                .findFirst();
+        stateClassMethods.forEach(method -> method.setAccessible(true));
+        eventSourcedCallbacks = stateClassMethods.stream().collect(Collectors.toMap(
+                this::getEventType,
+                method -> eventPayload -> invoke(method, eventPayload)
+        ));
     }
 
-    private Type getEventType(Constructor<?> stateConstructor) {
-        Class<?> declaredParemeterType = stateConstructor.getParameters()[0].getType();
-        Annotation annotation = stateConstructor.getAnnotation(StateConstructor.class);
-        return Type.getType(annotation, declaredParemeterType);
-    }
-
-    private <T> State<T> createState(ConstructorCallback<T> constructorCallBack, SequencedEvent first, Query query, List<SequencedEvent> events, EventStore eventStore) {
-        if (!constructorCallBack.type().equals(first.type())) {
-            throw new StateConstructionFailedException("Initial event type different from event type declared in StateConstructor");
+    private Type getEventType(Method eventHandlerMethod) {
+        if (eventHandlerMethod.getParameters().length != 1) {
+            throw new IllegalArgumentException("Event handler method must have exactly one parameter.");
         }
+        Class<?> declaredParemeterType = eventHandlerMethod.getParameters()[0].getType();
+        Annotation annotation = eventHandlerMethod.getAnnotation(EventSourced.class);
+        return getTypeForAnnotatedParameter(annotation, declaredParemeterType);
+    }
+
+    private void executeEventSourcedCallbacks() {
+        List<SequencedEvent> events = state.getUnprocessedEvents();
+        events.forEach(event -> eventSourcedCallbacks.get(event.type()).invoke(event.payload()));
+        sequencePositionLastSourcedEvent = events.isEmpty() ? null : events.getLast().position();
+    }
+
+    private void invoke(Method method, Object eventPayload) {
         try {
-            return new State<>(constructorCallBack.constructor().newInstance(first.payload()), query, events, eventStore);
-        } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
-            throw new StateConstructionFailedException(e);
+            if (state.isInitialized()) {
+                method.invoke(state.getState().get(), eventPayload);
+            }
+        } catch (IllegalAccessException e) {
+            log.warn("Could not invoke handler method for event {}", eventPayload, e);
+        } catch (InvocationTargetException e) {
+            log.warn("Invoked handler threw exception for event {}", eventPayload, e);
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private <T> State<T> createEmptyState(Class<T> stateClass, Query query, List<SequencedEvent> events, EventStore eventStore) {
-        try {
-            Constructor<T> noArgConstructor = (Constructor<T>) stateClass.getDeclaredConstructors()[0];
-            noArgConstructor.setAccessible(true);
-            return new State<>(noArgConstructor.newInstance(), stateClass, query, events, eventStore);
-        } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
-            throw new RuntimeException(e);
+    void load() {
+        List<SequencedEvent> events = eventStore.read(query);
+        InitialStateCreator<T> initialStateCreator = new InitialStateCreator<>(stateClass);
+        state = initialStateCreator.createState(events);
+        setEventSourcedCallbacks();
+        executeEventSourcedCallbacks();
+    }
+
+    public void apply(Object event, Tag tag) {
+        apply(event, Tags.and(tag), Type.of(event.getClass()));
+    }
+
+    public void apply(Object event, Tags tags) {
+        apply(event, tags, Type.of(event.getClass()));
+    }
+
+    public void apply(Object event, Tag tag, Type type) {
+        apply(event, Tags.and(tag), type);
+    }
+
+    public void apply(Object event, Tags tags, Type type) {
+        InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(type);
+        if (eventSourcedEventHandler != null) {
+            eventSourcedEventHandler.invoke(event);
+        }
+        if (sequencePositionLastSourcedEvent == null) { // No events sourced before
+            sequencePositionLastSourcedEvent = eventStore.append(new Event(event, tags.toSet(), type)).get();
+        } else { // use query + append condition for storing event
+            try {
+                sequencePositionLastSourcedEvent = eventStore.append(new Event(event, tags.toSet(), type), EventStore.AppendCondition.builder()
+                        .failIfEventsMatch(query)
+                        .after(sequencePositionLastSourcedEvent.value())
+                        .build()).get();
+            } catch (EventStore.AppendConditionNotSatisfied e) {
+                throw new StateManager.StateManagerOptimisticLockingException(
+                        "A unmanaged state-modifying event was stored after event sourcing but before applying the " +
+                                "current state-modifying (event), please retry.", e);
+            }
         }
     }
 
-    public static class StateConstructionFailedException extends RuntimeException {
-
-        public StateConstructionFailedException(String message) {
-            super(message);
-        }
-        public StateConstructionFailedException(Throwable cause) {
-            super(cause);
-        }
-
-    }
-
-    private record ConstructorCallback<T>(Type type, Constructor<T> constructor, boolean noArg) {
+    public Optional<T> getState() {
+        return state.getState();
     }
 
     public static class StateManagerOptimisticLockingException extends RuntimeException {

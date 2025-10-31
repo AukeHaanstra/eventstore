@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore;
 
 import nl.pancompany.eventstore.EventStore.SequencePosition;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,17 @@ public class EventHandlerTest {
         MultiEventHandlerClass.myHandledEvent = null;
         MultiEventHandlerClass.myOtherHandledEvent = null;
         RecordingEventHandlerClass.myHandledEvents.clear();
+    }
+
+    @AfterEach
+    void tearDown() {
+        eventStore.close();
+    }
+
+    @Test
+    void throwsExceptionOnMultipleNoArgsConstructors() {
+        assertThatThrownBy(() -> eventStore.getEventBus().registerSynchronousEventHandlers(InvalidEventHandlerClass.class))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
