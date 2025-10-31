@@ -56,7 +56,7 @@ class InitialStateCreator<T> {
         Constructor<T> noArgConstructor = (Constructor<T>) Arrays.stream(stateClass.getDeclaredConstructors())
                 .filter(constructor -> constructor.getParameterCount() == 0)
                 .findFirst()
-                .orElseThrow(() -> new IllegalArgumentException(String.format("State class must have exactly one no-args " +
+                .orElseThrow(() -> new IllegalArgumentException(String.format("State class must have a no-args " +
                         "constructor or an @%s annotated constructor.", StateCreator.class.getSimpleName())));
         noArgConstructor.setAccessible(true);
         return new State<>(invoke(noArgConstructor), events);

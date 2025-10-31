@@ -37,24 +37,6 @@ public class EventBus implements AutoCloseable {
         );
     }
 
-    @Override
-    public void close() {
-        try {
-            shutdownExecutor(executor, 10, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static void shutdownExecutor(ExecutorService es, long timeout, TimeUnit unit)
-            throws InterruptedException {
-        es.shutdown();
-        if (!es.awaitTermination(timeout, unit)) {
-            es.shutdownNow();
-            es.awaitTermination(timeout, unit); // best effort
-        }
-    }
-
     public void registerSynchronousEventHandlers(Class<?> eventHandlerClass) {
         Object eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, true);
@@ -72,7 +54,7 @@ public class EventBus implements AutoCloseable {
             Constructor<?> noArgConstructor = Arrays.stream(eventHandlerClass.getDeclaredConstructors())
                     .filter(constructor -> constructor.getParameterCount() == 0)
                     .findFirst()
-                    .orElseThrow(() -> new IllegalArgumentException(String.format("Event handler class must have exactly one no-args " +
+                    .orElseThrow(() -> new IllegalArgumentException(String.format("Event handler class must have a no-args " +
                             "constructor. Class: %s", eventHandlerClass.getName())));
             noArgConstructor.setAccessible(true);
             return noArgConstructor.newInstance();
@@ -128,6 +110,9 @@ public class EventBus implements AutoCloseable {
     }
 
     private Type getEventType(Method eventHandlerMethod) {
+        if (eventHandlerMethod.getParameters().length != 1) {
+            throw new IllegalArgumentException("Event handler method must have exactly one parameter.");
+        }
         Class<?> declaredParemeterType = eventHandlerMethod.getParameters()[0].getType();
         EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
         return Type.getTypeForAnnotatedParameter(annotation, declaredParemeterType);
@@ -166,6 +151,24 @@ public class EventBus implements AutoCloseable {
             log.warn("Could not invoke handler method for event {}", eventPayload, e);
         } catch (InvocationTargetException e) {
             log.warn("Invoked handler threw exception for event {}", eventPayload, e);
+        }
+    }
+
+    @Override
+    public void close() {
+        try {
+            shutdownExecutor(executor, 10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void shutdownExecutor(ExecutorService executorService, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        executorService.shutdown();
+        if (!executorService.awaitTermination(timeout, unit)) {
+            executorService.shutdownNow();
+            executorService.awaitTermination(timeout, unit);
         }
     }
 

@@ -58,6 +58,18 @@ public class EventHandlerTest {
     }
 
     @Test
+    void throwsExceptionOnInvalidHandlerMethod4() {
+        assertThatThrownBy(() -> eventStore.getEventBus().registerSynchronousEventHandlers(InvalidEventHandlerClass4.class))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void throwsExceptionOnInvalidHandlerMethod5() {
+        assertThatThrownBy(() -> eventStore.getEventBus().registerSynchronousEventHandlers(InvalidEventHandlerClass5.class))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void registeredSynchronousHandlerHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
@@ -343,6 +355,26 @@ public class EventHandlerTest {
 
         @ResetHandler
         private void reset2() {
+        }
+
+    }
+
+    public static class InvalidEventHandlerClass4 {
+
+        InvalidEventHandlerClass4(String invalid) {
+
+        }
+
+        @EventHandler
+        private void handle(MyEvent myEvent) {
+        }
+
+    }
+
+    public static class InvalidEventHandlerClass5 {
+
+        @EventHandler
+        private void handle(MyEvent event, MyOtherEvent myOtherEvent) {
         }
 
     }

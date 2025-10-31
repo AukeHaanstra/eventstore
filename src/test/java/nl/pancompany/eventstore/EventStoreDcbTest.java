@@ -41,6 +41,11 @@ public class EventStoreDcbTest {
     }
 
     @Test
+    void appendConditionMustIncludeFailIfEventsMatchQuery() {
+        assertThatThrownBy(() -> AppendCondition.builder().build()).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void retrievesEventMatchingTagQuery() {
         var myEvent = new MyEvent("data");
         Event event = new Event(myEvent, Set.of(Tag.of("test")));

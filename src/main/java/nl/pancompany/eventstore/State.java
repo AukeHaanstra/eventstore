@@ -12,18 +12,16 @@ import static java.util.Collections.emptyList;
 class State<T> {
 
     private final T entity;
-    private final Class<T> stateClass;
     @Getter
     private final List<SequencedEvent> unprocessedEvents;
 
-    @SuppressWarnings("unchecked")
-    State(T entity, List<SequencedEvent> unprocessedEvents) {
-        this(entity, (Class<T>) entity.getClass(), unprocessedEvents);
+    State() {
+        this.entity = null;
+        this.unprocessedEvents = emptyList();
     }
 
-    State(T entity, Class<T> stateClass, List<SequencedEvent> unprocessedEvents) {
+    State(T entity, List<SequencedEvent> unprocessedEvents) {
         this.entity = entity;
-        this.stateClass = stateClass;
         this.unprocessedEvents = unprocessedEvents;
     }
 
@@ -32,15 +30,11 @@ class State<T> {
     }
 
     static <U> State<U> uninitializedState(Class<U> stateClass) {
-        return new State<>(null, stateClass, emptyList());
+        return new State<>();
     }
 
     Optional<T> getState() {
         return Optional.ofNullable(this.entity);
-    }
-
-    Class<T> getStateClass() {
-        return this.stateClass;
     }
 
 }

@@ -51,28 +51,26 @@ public class StateManager<T> {
         ));
     }
 
-    private Type getEventType(Method eventHandlerMethod) {
-        if (eventHandlerMethod.getParameters().length != 1) {
+    private Type getEventType(Method eventSourcedMethod) {
+        if (eventSourcedMethod.getParameters().length != 1) {
             throw new IllegalArgumentException("Event handler method must have exactly one parameter.");
         }
-        Class<?> declaredParemeterType = eventHandlerMethod.getParameters()[0].getType();
-        Annotation annotation = eventHandlerMethod.getAnnotation(EventSourced.class);
+        Class<?> declaredParemeterType = eventSourcedMethod.getParameters()[0].getType();
+        Annotation annotation = eventSourcedMethod.getAnnotation(EventSourced.class);
         return getTypeForAnnotatedParameter(annotation, declaredParemeterType);
     }
 
     private void executeEventSourcedCallbacks() {
         List<SequencedEvent> events = state.getUnprocessedEvents();
-        events.forEach(event -> eventSourcedCallbacks.get(event.type()).invoke(event.payload()));
+        events.stream()
+                .filter(event -> eventSourcedCallbacks.containsKey(event.type()))
+                .forEach(event -> eventSourcedCallbacks.get(event.type()).invoke(event.payload()));
         sequencePositionLastSourcedEvent = events.isEmpty() ? null : events.getLast().position();
     }
 
     private void invoke(Method method, Object eventPayload) {
         try {
-            if (state.isInitialized()) {
-                method.invoke(state.getState().get(), eventPayload);
-            } else {
-                throw new UnhandledEventException("Event sourced method could not be invoked because state has not been initialized.");
-            }
+            method.invoke(state.getState().get(), eventPayload);
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke handler method for event {}", eventPayload, e);
         } catch (InvocationTargetException e) {
@@ -106,9 +104,7 @@ public class StateManager<T> {
             InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(type);
             if (eventSourcedEventHandler != null) {
                 eventSourcedEventHandler.invoke(eventPayload);
-            } else {
-                throw new UnhandledEventException("Event could not be applied because there was no corresponding event handler");
-            }
+            } // if there is no eventsourced handler, that is fine, we don't apply the event, but only append it to the event store
         }
         if (sequencePositionLastSourcedEvent == null) { // No events sourced before
             sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type)).get();
@@ -136,9 +132,4 @@ public class StateManager<T> {
         }
     }
 
-    public static class UnhandledEventException extends RuntimeException {
-        public UnhandledEventException(String message) {
-            super(message);
-        }
-    }
 }

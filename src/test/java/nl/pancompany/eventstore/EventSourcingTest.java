@@ -13,8 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// TODO: Also test error situations and special setups
-public class StateViewModelTest {
+public class EventSourcingTest {
 
     private EventStore eventStore;
     private static final String MY_ENTITY_ID = UUID.randomUUID().toString();
@@ -22,7 +21,9 @@ public class StateViewModelTest {
     MyEvent myEvent;
     MyOtherEvent myOtherEvent;
     MyNewEvent myNewEvent;
-    Event event0, event1, event2, event3;
+    MyUnsourcedEvent myUnsourcedEvent;
+    Event event0, event1, event2, event3, unsourced;
+    Query query;
 
     @BeforeEach
     void setUp() {
@@ -31,10 +32,15 @@ public class StateViewModelTest {
         myEvent = new MyEvent(MY_ENTITY_ID, "1");
         myOtherEvent = new MyOtherEvent(MY_ENTITY_ID, "2");
         myNewEvent = new MyNewEvent(MY_ENTITY_ID, "3");
+        myUnsourcedEvent = new MyUnsourcedEvent(MY_ENTITY_ID, "4");
         event0 = Event.of(myInitialEvent, Tag.of("MyEntity", MY_ENTITY_ID));
         event1 = Event.of(myEvent, Tag.of("MyEntity", MY_ENTITY_ID));
         event2 = Event.of(myOtherEvent, Tag.of("MyEntity", MY_ENTITY_ID));
         event3 = Event.of(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID));
+        unsourced = Event.of(myUnsourcedEvent, Tag.of("MyEntity", MY_ENTITY_ID));
+        query = Query
+                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
+                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class, MyUnsourcedEvent.class);
     }
 
     @AfterEach
@@ -46,9 +52,6 @@ public class StateViewModelTest {
     void rehydratesStateViewModel() {
         // Arrange
         eventStore.append(event0, event1,event2);
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
@@ -70,9 +73,6 @@ public class StateViewModelTest {
     void rehydratesStateViewModelWithoutStateConstructor() {
         // Arrange
         eventStore.append(event0, event1,event2);
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
@@ -94,9 +94,6 @@ public class StateViewModelTest {
     void rehydratesStateViewModelWithPreInstantiatedState() {
         // Arrange
         eventStore.append(event0, event1,event2);
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
@@ -115,12 +112,20 @@ public class StateViewModelTest {
     }
 
     @Test
+    void stateConstructingEventMustHaveBeenStoredFirst() {
+        // Arrange
+        eventStore.append(event1, event0, event2);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event1, event0, event2);
+
+        // Act (just like in a command handler)
+        assertThatThrownBy(() -> eventStore.loadState(MyState.class, query)).isInstanceOf(StateConstructionFailedException.class);
+    }
+
+    @Test
     void thowsOptimisticLockingException_AndNotAppliesStateChange_WhenQueryResultsGetModifiedDuringStateChange() {
         // Arrange
         eventStore.append(event0, event1, event2);
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
 
@@ -130,7 +135,7 @@ public class StateViewModelTest {
         MyStateWithoutStateConstructor state = stateManager.getState().get();
         // < business rules validation and decision-making (state change or automation) >
 
-        var concurrentlySavedMyEvent = new MyEvent(MY_ENTITY_ID, "4");
+        var concurrentlySavedMyEvent = new MyEvent(MY_ENTITY_ID, "5");
         Event concurrentlySavedEvent = Event.of(concurrentlySavedMyEvent, Tag.of("MyEntity", MY_ENTITY_ID));
         eventStore.append(concurrentlySavedEvent);
 
@@ -150,12 +155,6 @@ public class StateViewModelTest {
 
     @Test
     void createsUninitializedStateForStateConstructorAndNoEvents() {
-        // Arrange
-        eventStore.append();
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
-
         // Act (just like in a command handler)
         StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
 
@@ -168,9 +167,6 @@ public class StateViewModelTest {
     @Test
     void applyingRegularEventToUninitializedStateIsNotPossible() {
         // Arrange
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(sequencedEvents).isEmpty();
 
@@ -185,11 +181,28 @@ public class StateViewModelTest {
     }
 
     @Test
+    void stateClassMustHaveOneNoArgsConstructor() {
+        // Arrange
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        assertThatThrownBy(() ->  eventStore.loadState(InvalidStateClass2.class, query))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void eventSourcedHandlerMustHaveOneEventParameter() {
+        // Arrange
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        assertThatThrownBy(() ->  eventStore.loadState(InvalidStateClass3.class, query))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void applyingCreatorEventToUninitializedStateIsPossible() {
         // Arrange
-        Query query = Query
-                .taggedWith(Tag.of("MyEntity", MY_ENTITY_ID))
-                .andHavingType(MyInitialEvent.class, MyEvent.class, MyOtherEvent.class, MyNewEvent.class);
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
         assertThat(sequencedEvents).isEmpty();
 
@@ -208,6 +221,44 @@ public class StateViewModelTest {
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1);
     }
 
+    @Test
+    void sourcedEventPublishedInBetweenApplyCallsResultsInOptimisticLockingException() {
+        // Arrange
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(myInitialEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyInitialEvent.class));
+        eventStore.append(event3);
+        assertThatThrownBy(() ->  stateManager.apply(myEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyEvent.class)))
+                .isInstanceOf(StateManagerOptimisticLockingException.class);
+    }
+
+    @Test
+    void mayAppendAndApplyUnsourcedEvent() {
+        // Arrange
+        eventStore.append(event0, event1, event2, unsourced);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, unsourced);
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+        MyState state = stateManager.getState().get();
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(myUnsourcedEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyUnsourcedEvent.class));
+
+        // Assert
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent);
+        sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, unsourced, unsourced);
+    }
+
     private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
         return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
@@ -219,6 +270,25 @@ public class StateViewModelTest {
         @StateCreator
         private InvalidStateClass(MyInitialEvent event, MyOtherEvent myOtherEvent) {
             myHandledEvents.add(event);
+        }
+
+    }
+
+    private static class InvalidStateClass2 {
+
+        InvalidStateClass2(String invalid) {
+        }
+
+        @EventSourced
+        private void handle(MyEvent event) {
+        }
+
+    }
+
+    private static class InvalidStateClass3 {
+
+        @EventSourced
+        private void handle(MyEvent event, MyOtherEvent myOtherEvent) {
         }
 
     }
@@ -276,18 +346,17 @@ public class StateViewModelTest {
     }
 
     record MyInitialEvent(String id, String data) {
-
     }
 
     record MyEvent(String id, String data) {
-
     }
 
     record MyOtherEvent(String id, String data) {
-
     }
 
     record MyNewEvent(String id, String data) {
+    }
 
+    record MyUnsourcedEvent(String id, String data) {
     }
 }
