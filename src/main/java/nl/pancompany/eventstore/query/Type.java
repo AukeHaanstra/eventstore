@@ -38,19 +38,19 @@ public record Type(String type, Class<?> clazz) {
         return new Types(Set.of(this, Type.of(clazz)));
     }
 
-    public static Type getTypeForAnnotatedParameter(Annotation annotation, Class<?> declaredParemeterType) {
+    public static Type getTypeForAnnotatedParameter(Annotation annotation, Class<?> declaredParameterType) {
         String parameterName = annotation.getClass().getSimpleName();
         String type = getAnnotationTypeElementValue(annotation);
-        if (declaredParemeterType == Object.class && type.isBlank()) {
+        if (declaredParameterType == Object.class && type.isBlank()) {
             throw new IllegalArgumentException("%s annotation must have a type defined when the first parameter is Object."
                     .formatted(parameterName));
-        } else if (declaredParemeterType != Object.class && !type.isBlank()) {
+        } else if (declaredParameterType != Object.class && !type.isBlank()) {
             throw new IllegalArgumentException(String.format("Either declare an @%s(type = ..) with an Object " +
                     "parameter, or declare @%s with a typed parameter.", parameterName, parameterName));
-        } else if (declaredParemeterType == Object.class) {
+        } else if (declaredParameterType == Object.class) {
             return Type.of(type);
         }
-        return Type.of(declaredParemeterType);
+        return Type.of(declaredParameterType);
     }
 
     private static String getAnnotationTypeElementValue(Annotation annotation) {

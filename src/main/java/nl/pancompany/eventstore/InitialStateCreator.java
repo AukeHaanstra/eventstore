@@ -52,9 +52,9 @@ class InitialStateCreator<T> {
     }
 
     private Type getEventType(Constructor<?> stateConstructor) {
-        Class<?> declaredParemeterType = stateConstructor.getParameters()[0].getType();
+        Class<?> declaredParameterType = stateConstructor.getParameters()[0].getType();
         Annotation annotation = stateConstructor.getAnnotation(StateCreator.class);
-        return getTypeForAnnotatedParameter(annotation, declaredParemeterType);
+        return getTypeForAnnotatedParameter(annotation, declaredParameterType);
     }
 
     @SuppressWarnings("unchecked")

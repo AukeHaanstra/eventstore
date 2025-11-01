@@ -8,12 +8,13 @@ import java.util.List;
 import java.util.Optional;
 
 import static java.util.Collections.emptyList;
+import static lombok.AccessLevel.PACKAGE;
 
 @Slf4j
 class State<T> {
 
     private final T entity;
-    @Getter
+    @Getter(PACKAGE)
     private final List<SequencedEvent> unprocessedEvents;
 
     State() {

@@ -64,9 +64,9 @@ public class StateManager<T> {
         if (eventSourcedMethod.getParameters().length != 1) {
             throw new IllegalArgumentException("Event handler method must have exactly one parameter.");
         }
-        Class<?> declaredParemeterType = eventSourcedMethod.getParameters()[0].getType();
+        Class<?> declaredParameterType = eventSourcedMethod.getParameters()[0].getType();
         Annotation annotation = eventSourcedMethod.getAnnotation(EventSourced.class);
-        return getTypeForAnnotatedParameter(annotation, declaredParemeterType);
+        return getTypeForAnnotatedParameter(annotation, declaredParameterType);
     }
 
     private void executeEventSourcedCallbacks() {
@@ -95,18 +95,28 @@ public class StateManager<T> {
     }
 
     public void apply(Object eventPayload, Tag tag) {
+        requireNonNull(eventPayload);
+        requireNonNull(tag);
         apply(eventPayload, Tags.and(tag), Type.of(eventPayload.getClass()));
     }
 
     public void apply(Object eventPayload, Tags tags) {
+        requireNonNull(eventPayload);
+        requireNonNull(tags);
         apply(eventPayload, tags, Type.of(eventPayload.getClass()));
     }
 
     public void apply(Object eventPayload, Tag tag, Type type) {
+        requireNonNull(eventPayload);
+        requireNonNull(tag);
+        requireNonNull(type);
         apply(eventPayload, Tags.and(tag), type);
     }
 
     public void apply(Object eventPayload, Tags tags, Type type) {
+        requireNonNull(eventPayload);
+        requireNonNull(tags);
+        requireNonNull(type);
         if (!state.isInitialized()) {
             state = initialStateCreator.createState(eventPayload); // try create state from event
         } else {

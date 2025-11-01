@@ -13,6 +13,7 @@ import nl.pancompany.eventstore.record.ReadOptions;
 import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -31,6 +32,7 @@ public class EventStore implements AutoCloseable {
     private final Lock writeLock = lock.writeLock();
     @Getter
     private final EventBus eventBus = new EventBus(this);
+    private final Queue<SequencedEvent> addedEvents = new ConcurrentLinkedQueue<>();
 
     @SuppressWarnings("unchecked")
     public <T> StateManager<T> loadState(T emptyStateInstance, Query query) {
@@ -52,6 +54,8 @@ public class EventStore implements AutoCloseable {
      * @param events The event instances that wrap a payload (the raw event).
      */
     public Optional<SequencePosition> append(Event... events) {
+        requireNonNull(events); // empty array is however allowed
+        Arrays.stream(events).forEach(e -> requireNonNull(requireNonNull(e).payload()));
         try {
             return append(List.of(events), null);
         } catch (AppendConditionNotSatisfied e) { // no append condition, so irrelevant
@@ -65,6 +69,8 @@ public class EventStore implements AutoCloseable {
      * @param events The event instances that wrap a payload (the raw event).
      */
     public Optional<SequencePosition> append(List<Event> events) {
+        requireNonNull(events); // empty list is however allowed
+        events.forEach(e -> requireNonNull(e.payload()));
         try {
             return append(events, null);
         } catch (AppendConditionNotSatisfied e) { // no append condition, so irrelevant
@@ -78,6 +84,7 @@ public class EventStore implements AutoCloseable {
      * @param event The event instances that wrap a payload (the raw event).
      */
     public Optional<SequencePosition> append(Event event, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+        requireNonNull(event.payload());
         return append(List.of(event), appendCondition);
     }
 
@@ -87,7 +94,8 @@ public class EventStore implements AutoCloseable {
      * @param events The event instances that wrap a payload (the raw event).
      */
     public Optional<SequencePosition> append(List<Event> events, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
-        List<SequencedEvent> addedEvents = new ArrayList<>();
+        requireNonNull(events); // empty list is however allowed
+        events.forEach(e -> requireNonNull(requireNonNull(e).payload()));
         SequencePosition lastInsertPosition = null;
         try {
             writeLock.lock();
@@ -98,7 +106,7 @@ public class EventStore implements AutoCloseable {
                 lastInsertPosition = SequencePosition.of(storedEvents.size());
                 SequencedEvent storedEvent = new SequencedEvent(event, lastInsertPosition);
                 storedEvents.add(storedEvent);
-                addedEvents.add(storedEvent);
+                addedEvents.offer(storedEvent); // offer() and writeLock guarantee sequential filling of queue
                 allSequencePositions.add(lastInsertPosition);
                 for (Tag tag : event.tags()) {
                     tagPositions.computeIfAbsent(tag, k -> new HashSet<>()).add(lastInsertPosition); // add to tag-index
@@ -108,7 +116,11 @@ public class EventStore implements AutoCloseable {
         } finally {
             writeLock.unlock();
         }
-        addedEvents.forEach(eventBus::invokeEventHandlers);
+        synchronized (eventBus) { // poll() & synchronized guarantee sequential in-order processing of queue elements
+            while (!addedEvents.isEmpty()) {
+                eventBus.invokeEventHandlers(addedEvents.poll());
+            }
+        }
         return Optional.ofNullable(lastInsertPosition);
     }
 
@@ -126,10 +138,12 @@ public class EventStore implements AutoCloseable {
     }
 
     public List<SequencedEvent> read(Query query) {
+        requireNonNull(query);
         return read(query, null);
     }
 
     public List<SequencedEvent> read(Query query, ReadOptions options) {
+        requireNonNull(query);
         try {
             readLock.lock();
             return queryEvents(query, options);

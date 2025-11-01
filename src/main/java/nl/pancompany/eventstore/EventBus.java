@@ -31,24 +31,18 @@ public class EventBus implements AutoCloseable {
 
     public EventBus(EventStore eventStore) {
         this.eventStore = eventStore;
-        Runtime.getRuntime().addShutdownHook(
-                Thread.ofPlatform().name("shutdown-hook").unstarted(() -> {
-                    try {
-                        shutdownExecutor(executor, 5, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                })
-        );
+        registerShutdownHook();
     }
 
     public void registerSynchronousEventHandlers(Class<?> eventHandlerClass) {
+        requireNonNull(eventHandlerClass);
         Object eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, true);
         registerEventHandler(eventHandlerClass, eventHandlerInstance, true);
     }
 
     public void registerAsynchronousEventHandlers(Class<?> eventHandlerClass) {
+        requireNonNull(eventHandlerClass);
         Object eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, false);
         registerEventHandler(eventHandlerClass, eventHandlerInstance, false);
@@ -118,9 +112,9 @@ public class EventBus implements AutoCloseable {
         if (eventHandlerMethod.getParameters().length != 1) {
             throw new IllegalArgumentException("Event handler method must have exactly one parameter.");
         }
-        Class<?> declaredParemeterType = eventHandlerMethod.getParameters()[0].getType();
+        Class<?> declaredParameterType = eventHandlerMethod.getParameters()[0].getType();
         EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
-        return Type.getTypeForAnnotatedParameter(annotation, declaredParemeterType);
+        return Type.getTypeForAnnotatedParameter(annotation, declaredParameterType);
     }
 
     /**
@@ -128,7 +122,7 @@ public class EventBus implements AutoCloseable {
      *
      * @param end end position, exclusive
      */
-    public void replay(EventStore.SequencePosition end) {
+    synchronized public void replay(EventStore.SequencePosition end) {
         List<SequencedEvent> eventsToReplay = eventStore.read(Query.all(), ReadOptions.builder()
                 .withStoppingPosition(end)
                 .build());
@@ -175,6 +169,18 @@ public class EventBus implements AutoCloseable {
             executorService.shutdownNow();
             executorService.awaitTermination(timeout, unit);
         }
+    }
+
+    private void registerShutdownHook() {
+        Runtime.getRuntime().addShutdownHook(
+                Thread.ofPlatform().name("shutdown-hook").unstarted(() -> {
+                    try {
+                        shutdownExecutor(executor, 5, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                })
+        );
     }
 
 }

@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.*;
 
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
 import static org.assertj.core.api.Assertions.*;
 
 public class EventStoreTest {
@@ -47,6 +49,15 @@ public class EventStoreTest {
         }).doesNotThrowAnyException();
         assertThatCode(() -> sequencedEvents.getFirst().payload(Object.class)).doesNotThrowAnyException();
         assertThatThrownBy(() -> sequencedEvents.getFirst().payload(String.class)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    public void nullEventsNotAllowed() {
+        assertThatThrownBy(() -> new Event(null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> eventStore.append((Event) null)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> eventStore.append(singletonList(null))).isInstanceOf(NullPointerException.class);
+        eventStore.append(); // allowed
+        eventStore.append(emptyList()); // allowed
     }
 
     @Test

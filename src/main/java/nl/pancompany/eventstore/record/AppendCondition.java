@@ -1,9 +1,10 @@
 package nl.pancompany.eventstore.record;
 
 import nl.pancompany.eventstore.EventStore;
+import nl.pancompany.eventstore.EventStore.SequencePosition;
 import nl.pancompany.eventstore.query.Query;
 
-public record AppendCondition(Query failIfEventsMatch, EventStore.SequencePosition after) {
+public record AppendCondition(Query failIfEventsMatch, SequencePosition after) {
 
     public static AppendConditionBuilder builder() {
         return new AppendConditionBuilder();
@@ -11,7 +12,7 @@ public record AppendCondition(Query failIfEventsMatch, EventStore.SequencePositi
 
     public static class AppendConditionBuilder {
         private Query failIfEventsMatch;
-        private EventStore.SequencePosition after;
+        private SequencePosition after;
 
         private AppendConditionBuilder() {
         }
@@ -24,7 +25,12 @@ public record AppendCondition(Query failIfEventsMatch, EventStore.SequencePositi
         public class FailIfEventsMatchAfterBuilder {
 
             public AppendConditionBuilder after(int sequencePosition) {
-                AppendConditionBuilder.this.after = EventStore.SequencePosition.of(sequencePosition);
+                AppendConditionBuilder.this.after = SequencePosition.of(sequencePosition);
+                return AppendConditionBuilder.this;
+            }
+
+            public AppendConditionBuilder after(SequencePosition sequencePosition) {
+                AppendConditionBuilder.this.after = sequencePosition;
                 return AppendConditionBuilder.this;
             }
 
