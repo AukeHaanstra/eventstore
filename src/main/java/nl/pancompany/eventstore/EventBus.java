@@ -5,6 +5,7 @@ import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Type;
+import nl.pancompany.eventstore.record.LoggedException;
 import nl.pancompany.eventstore.record.ReadOptions;
 import nl.pancompany.eventstore.record.SequencePosition;
 import nl.pancompany.eventstore.record.SequencedEvent;
@@ -13,9 +14,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -23,12 +22,14 @@ import static java.util.Objects.requireNonNull;
 @Slf4j
 public class EventBus implements AutoCloseable {
 
+    private static final int EXCEPTION_QUEUE_CAPACITY = 100;
     private final EventStore eventStore;
     private final Map<Type, Set<InvocableEventHandler>> synchronousEventHandlers = new HashMap<>();
     private final Map<Type, Set<InvocableEventHandler>> asynchronousEventHandlers = new HashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Runnable> synchronousResetHandlers = new HashSet<>();
     private final Set<Runnable> asynchronousResetHandlers = new HashSet<>();
+    private final Queue<LoggedException> loggedExceptions = new ArrayDeque<>(EXCEPTION_QUEUE_CAPACITY);
 
     EventBus(EventStore eventStore) {
         this.eventStore = eventStore;
@@ -103,13 +104,15 @@ public class EventBus implements AutoCloseable {
         return resetHandlerMethods;
     }
 
-    private static void invokeResetHandler(Method method, Object instance) {
+    private void invokeResetHandler(Method method, Object instance) {
         try {
             method.invoke(instance);
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke reset handler {}", method, e);
+            logException(LoggedException.of("Could not invoke reset handler %s".formatted(method), e));
         } catch (InvocationTargetException e) {
             log.warn("Reset handler threw exception. Method: {}", method, e);
+            logException(LoggedException.of("Reset handler threw exception. Method: %s".formatted(method), e));
         }
     }
 
@@ -174,13 +177,15 @@ public class EventBus implements AutoCloseable {
         }
     }
 
-    private static void invoke(Method method, Object instance, Object eventPayload) {
+    private void invoke(Method method, Object instance, Object eventPayload) {
         try {
             method.invoke(instance, eventPayload);
         } catch (IllegalAccessException e) {
             log.warn("Could not invoke handler method for event {}", eventPayload, e);
+            logException(LoggedException.of("Could not invoke handler method for event %s".formatted(eventPayload), e));
         } catch (InvocationTargetException e) {
             log.warn("Invoked handler threw exception for event {}", eventPayload, e);
+            logException(LoggedException.of("Invoked handler threw exception for event %s".formatted(eventPayload), e));
         }
     }
 
@@ -212,6 +217,31 @@ public class EventBus implements AutoCloseable {
                     }
                 })
         );
+    }
+
+    private void logException(LoggedException loggedException) {
+        synchronized (loggedExceptions) {
+            while (loggedExceptions.size() >= EXCEPTION_QUEUE_CAPACITY) {
+                loggedExceptions.poll();
+            }
+            loggedExceptions.offer(loggedException);
+        }
+    }
+
+    public List<LoggedException> getLoggedExceptions() {
+        synchronized (loggedExceptions) {
+            return new ArrayList<>(loggedExceptions);
+        }
+    }
+
+    public boolean hasLoggedExceptions() {
+        return !loggedExceptions.isEmpty();
+    }
+
+    public void clearLoggedExceptions() {
+        synchronized (loggedExceptions) {
+            loggedExceptions.clear();
+        }
     }
 
 }
