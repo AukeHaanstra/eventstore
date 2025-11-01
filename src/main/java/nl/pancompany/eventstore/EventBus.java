@@ -35,21 +35,24 @@ public class EventBus implements AutoCloseable {
         registerShutdownHook();
     }
 
-    public void registerSynchronousEventHandlers(Class<?> eventHandlerClass) {
+    public <T> T registerSynchronousEventHandler(Class<T> eventHandlerClass) {
         requireNonNull(eventHandlerClass);
-        Object eventHandlerInstance = createInstance(eventHandlerClass);
+        T eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, true);
         registerEventHandler(eventHandlerClass, eventHandlerInstance, true);
+        return eventHandlerInstance;
     }
 
-    public void registerAsynchronousEventHandlers(Class<?> eventHandlerClass) {
+    public <T> T registerAsynchronousEventHandler(Class<T> eventHandlerClass) {
         requireNonNull(eventHandlerClass);
-        Object eventHandlerInstance = createInstance(eventHandlerClass);
+        T eventHandlerInstance = createInstance(eventHandlerClass);
         registerResetHandler(eventHandlerClass, eventHandlerInstance, false);
         registerEventHandler(eventHandlerClass, eventHandlerInstance, false);
+        return eventHandlerInstance;
     }
 
-    private static Object createInstance(Class<?> eventHandlerClass) {
+    @SuppressWarnings("unchecked")
+    private static <T> T createInstance(Class<T> eventHandlerClass) {
         try {
             Constructor<?> noArgConstructor = Arrays.stream(eventHandlerClass.getDeclaredConstructors())
                     .filter(constructor -> constructor.getParameterCount() == 0)
@@ -57,19 +60,19 @@ public class EventBus implements AutoCloseable {
                     .orElseThrow(() -> new IllegalArgumentException(String.format("Event handler class must have a no-args " +
                             "constructor. Class: %s", eventHandlerClass.getName())));
             noArgConstructor.setAccessible(true);
-            return noArgConstructor.newInstance();
+            return (T) noArgConstructor.newInstance();
         } catch (InstantiationException | InvocationTargetException | IllegalAccessException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public void registerSynchronousEventHandlers(Object eventHandlerInstance) {
+    public void registerSynchronousEventHandler(Object eventHandlerInstance) {
         requireNonNull(eventHandlerInstance);
         registerResetHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
         registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, true);
     }
 
-    public void registerAsynchronousEventHandlers(Object eventHandlerInstance) {
+    public void registerAsynchronousEventHandler(Object eventHandlerInstance) {
         requireNonNull(eventHandlerInstance);
         registerResetHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
         registerEventHandler(eventHandlerInstance.getClass(), eventHandlerInstance, false);
