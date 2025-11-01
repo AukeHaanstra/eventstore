@@ -5,13 +5,17 @@ import nl.pancompany.eventstore.query.Type;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Objects;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
-public record Event(Object payload, Set<Tag> tags, Type type) {
+public record Event(Object payload, Set<Tag> tags, Type type, Map<String, String> metadata) {
+
+    public Event(Object payload, Set<Tag> tags, Type type) {
+        this(payload, tags, type, null);
+    }
 
     public Event(Object payload) {
         requireNonNull(payload);
@@ -93,6 +97,10 @@ public record Event(Object payload, Set<Tag> tags, Type type) {
 
     public static Event of(Object payload, Type type, String... tags) {
         return new Event(payload, type, tags);
+    }
+
+    public Event withMetadata(Map<String, String> metadata) {
+        return new Event(payload, tags, type, metadata);
     }
 
     private static Type getName(Object payload) {

@@ -9,6 +9,10 @@ import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 import nl.pancompany.eventstore.record.*;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
@@ -30,6 +34,15 @@ public class EventStore implements AutoCloseable {
     @Getter
     private final EventBus eventBus = new EventBus(this);
     private final Queue<SequencedEvent> addedEvents = new ConcurrentLinkedQueue<>();
+    private final Clock clock;
+
+    public EventStore() {
+        this.clock = Clock.systemDefaultZone();
+    }
+
+    public EventStore(Clock clock) {
+        this.clock = clock;
+    }
 
     @SuppressWarnings("unchecked")
     public <T> StateManager<T> loadState(T emptyStateInstance, Query query) {
@@ -101,7 +114,8 @@ public class EventStore implements AutoCloseable {
             }
             for (Event event : events) {
                 lastInsertPosition = SequencePosition.of(storedEvents.size());
-                SequencedEvent storedEvent = new SequencedEvent(event, lastInsertPosition);
+                Map<String, String> metadata = Map.of("timestamp", Instant.now(clock).toString());
+                SequencedEvent storedEvent = new SequencedEvent(event, lastInsertPosition, metadata);
                 storedEvents.add(storedEvent);
                 addedEvents.offer(storedEvent); // offer() and writeLock guarantee sequential filling of queue
                 allSequencePositions.add(lastInsertPosition);

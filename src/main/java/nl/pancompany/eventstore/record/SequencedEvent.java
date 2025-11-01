@@ -3,12 +3,15 @@ package nl.pancompany.eventstore.record;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
-public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequencePosition position) {
+public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequencePosition position,
+                             Map<String, String> clientMetadata, Map<String, String> eventStoreMetadata) {
 
-    public SequencedEvent(Event event, SequencePosition position) {
-        this(event.payload(), event.tags(), event.type(), position);
+    public SequencedEvent(Event event, SequencePosition position, Map<String, String> eventStoreMetadata) {
+        this(event.payload(), event.tags(), event.type(), position, event.metadata(), eventStoreMetadata);
     }
 
     @SuppressWarnings("unchecked")
@@ -25,6 +28,7 @@ public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequenceP
      * @return The event corresponding to this sequenced event
      */
     public Event toEvent() {
-        return new Event(payload(), tags, type);
+        return new Event(payload(), tags, type, clientMetadata);
     }
+
 }

@@ -12,10 +12,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -39,7 +40,8 @@ public class EventStoreDcbTest {
 
     @BeforeEach
     void setUp() {
-        eventStore = new EventStore();
+        Clock clock = Clock.fixed(Instant.EPOCH, ZoneId.of("UTC"));
+        eventStore = new EventStore(clock);
     }
 
     @AfterEach
@@ -61,6 +63,19 @@ public class EventStoreDcbTest {
 
         List<SequencedEvent> sequencedEvents = eventStore.read(Query.taggedWith("test").build());
         assertThat(toEvents(sequencedEvents)).containsExactly(event);
+    }
+
+    @Test
+    void retrievesEventWithMetadata() {
+        var myEvent = new MyEvent("data");
+        Event event = new Event(myEvent, Set.of(Tag.of("test"))).withMetadata(Map.of("client", "metadata"));
+
+        eventStore.append(event);
+
+        List<SequencedEvent> sequencedEvents = eventStore.read(Query.taggedWith("test").build());
+        assertThat(toEvents(sequencedEvents)).containsExactly(event);
+        assertThat(sequencedEvents.getFirst().clientMetadata().get("client")).isEqualTo("metadata");
+        assertThat(sequencedEvents.getFirst().eventStoreMetadata().get("timestamp")).isEqualTo("1970-01-01T00:00:00Z");
     }
 
     @Test
