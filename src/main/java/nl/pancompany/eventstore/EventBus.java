@@ -6,6 +6,7 @@ import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Type;
 import nl.pancompany.eventstore.record.ReadOptions;
+import nl.pancompany.eventstore.record.SequencePosition;
 import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.lang.reflect.Constructor;
@@ -75,14 +76,28 @@ public class EventBus implements AutoCloseable {
     }
 
     private void registerResetHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
-        Set<Method> resetHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
-                method -> method.isAnnotationPresent(ResetHandler.class)).collect(Collectors.toSet());
-        if (resetHandlerMethods.size() > 1) {
-            throw new IllegalArgumentException("Multiple reset handlers are not allowed.");
-        }
+        Set<Method> resetHandlerMethods = getResetHandlers(eventHandlerClass, instance);
         resetHandlerMethods.forEach(method -> method.setAccessible(true));
         Set<Runnable> resetHandlers = synchronous ? synchronousResetHandlers : asynchronousResetHandlers;
-        resetHandlerMethods.stream().findFirst().ifPresent(method -> resetHandlers.add(() -> invokeResetHandler(method, instance)));
+        resetHandlerMethods.forEach(method -> resetHandlers.add(() -> invokeResetHandler(method, instance)));
+    }
+
+    /**
+     * Recursively find all reset handlers in the inheritance hierarchy, overwriting reset handlers from superclasses
+     * with reset handlers from subclasses for the same event type.
+     */
+    private Set<Method> getResetHandlers(Class<?> clazz, Object instance) {
+        if (clazz == null) {
+            return new HashSet<>(); // base case
+        }
+        Set<Method> resetHandlerMethods = getResetHandlers(clazz.getSuperclass(), instance);
+        Set<Method> newResetHandlerMethods = Arrays.stream(clazz.getDeclaredMethods()).filter(
+                method -> method.isAnnotationPresent(ResetHandler.class)).collect(Collectors.toSet());
+        if (newResetHandlerMethods.size() > 1) {
+            throw new IllegalArgumentException("Multiple reset handlers per class are not allowed.");
+        }
+        resetHandlerMethods.addAll(newResetHandlerMethods);
+        return resetHandlerMethods;
     }
 
     private static void invokeResetHandler(Method method, Object instance) {
@@ -107,7 +122,7 @@ public class EventBus implements AutoCloseable {
      * with eventhandlers from subclasses for the same event type.
      */
     private Map<Type, InvocableEventHandler> getNewEventHandlers(Class<?> clazz, Object instance) {
-        if (clazz.getSuperclass() == null) {
+        if (clazz == null) {
             return new HashMap<>(); // base case
         }
         Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(clazz.getSuperclass(), instance);
@@ -135,7 +150,7 @@ public class EventBus implements AutoCloseable {
      *
      * @param end end position, exclusive
      */
-    synchronized public void replay(EventStore.SequencePosition end) {
+    synchronized public void replay(SequencePosition end) {
         List<SequencedEvent> eventsToReplay = eventStore.read(Query.all(), ReadOptions.builder()
                 .withStoppingPosition(end)
                 .build());

@@ -1,12 +1,10 @@
 package nl.pancompany.eventstore.record;
 
-import nl.pancompany.eventstore.EventStore;
-
 /**
  * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}]
  * @param stopPosition     Stop position, exclusive, possible range is [0, {@literal <last-position+1>}]
  */
-public record ReadOptions(EventStore.SequencePosition startingPosition, EventStore.SequencePosition stopPosition) {
+public record ReadOptions(SequencePosition startingPosition, SequencePosition stopPosition) {
 
     public static ReadOptionsBuilder builder() {
         return new ReadOptionsBuilder();
@@ -14,8 +12,8 @@ public record ReadOptions(EventStore.SequencePosition startingPosition, EventSto
 
     public static class ReadOptionsBuilder {
 
-        private EventStore.SequencePosition startingPosition = EventStore.SequencePosition.of(0);
-        private EventStore.SequencePosition stopPosition;
+        private SequencePosition startingPosition = SequencePosition.of(0);
+        private SequencePosition stopPosition;
 
         private ReadOptionsBuilder() {
         }
@@ -25,14 +23,14 @@ public record ReadOptions(EventStore.SequencePosition startingPosition, EventSto
          * @return
          */
         public ReadOptionsBuilder withStartingPosition(int startingPosition) {
-            return withStartingPosition(EventStore.SequencePosition.of(startingPosition));
+            return withStartingPosition(SequencePosition.of(startingPosition));
         }
 
         /**
          * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}], Defaults to 0
          * @return
          */
-        public ReadOptionsBuilder withStartingPosition(EventStore.SequencePosition startingPosition) {
+        public ReadOptionsBuilder withStartingPosition(SequencePosition startingPosition) {
             this.startingPosition = startingPosition;
             return this;
         }
@@ -42,14 +40,14 @@ public record ReadOptions(EventStore.SequencePosition startingPosition, EventSto
          * @return
          */
         public ReadOptionsBuilder withStoppingPosition(int stopPosition) {
-            return withStoppingPosition(EventStore.SequencePosition.of(stopPosition));
+            return withStoppingPosition(SequencePosition.of(stopPosition));
         }
 
         /**
          * @param stopPosition Stopping position, exclusive, possible range is [0, {@literal <last-position+1>}], Defaults to null (no stopping position)
          * @return
          */
-        public ReadOptionsBuilder withStoppingPosition(EventStore.SequencePosition stopPosition) {
+        public ReadOptionsBuilder withStoppingPosition(SequencePosition stopPosition) {
             this.stopPosition = stopPosition;
             return this;
         }

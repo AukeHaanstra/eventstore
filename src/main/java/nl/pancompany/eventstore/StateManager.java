@@ -9,6 +9,7 @@ import nl.pancompany.eventstore.query.Tags;
 import nl.pancompany.eventstore.query.Type;
 import nl.pancompany.eventstore.record.AppendCondition;
 import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.SequencePosition;
 import nl.pancompany.eventstore.record.SequencedEvent;
 
 import java.lang.annotation.Annotation;
@@ -30,7 +31,7 @@ public class StateManager<T> {
     private final Query query;
     private State<T> state;
 
-    private EventStore.SequencePosition sequencePositionLastSourcedEvent;
+    private SequencePosition sequencePositionLastSourcedEvent;
     private Map<Type, InvocableEventHandler> eventSourcedCallbacks;
 
     StateManager(EventStore eventStore, Class<T> stateClass, Query query) {
@@ -54,7 +55,7 @@ public class StateManager<T> {
      * with eventhandlers from subclasses for the same event type.
      */
     private Map<Type, InvocableEventHandler> getEventSourcedCallbacks(Class<? super T> clazz) {
-        if (clazz.getSuperclass() == null) {
+        if (clazz == null) {
             return new HashMap<>(); // base case
         }
         Map<Type, InvocableEventHandler> eventSourcedCallbacks = getEventSourcedCallbacks(clazz.getSuperclass());

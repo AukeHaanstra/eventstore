@@ -1,7 +1,5 @@
 package nl.pancompany.eventstore.record;
 
-import nl.pancompany.eventstore.EventStore;
-import nl.pancompany.eventstore.EventStore.SequencePosition;
 import nl.pancompany.eventstore.query.Query;
 
 public record AppendCondition(Query failIfEventsMatch, SequencePosition after) {

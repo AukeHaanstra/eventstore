@@ -1,14 +1,13 @@
 package nl.pancompany.eventstore.record;
 
-import nl.pancompany.eventstore.EventStore;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 
 import java.util.Set;
 
-public record SequencedEvent(Object payload, Set<Tag> tags, Type type, EventStore.SequencePosition position) {
+public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequencePosition position) {
 
-    public SequencedEvent(Event event, EventStore.SequencePosition position) {
+    public SequencedEvent(Event event, SequencePosition position) {
         this(event.payload(), event.tags(), event.type(), position);
     }
 

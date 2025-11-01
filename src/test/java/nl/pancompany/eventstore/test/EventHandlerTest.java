@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore.test;
 
 import nl.pancompany.eventstore.EventStore;
+import nl.pancompany.eventstore.record.SequencePosition;
 import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.record.Event;
@@ -130,6 +131,15 @@ public class EventHandlerTest {
     }
 
     @Test
+    void callsAsynchronousParentChildResetHandlers() {
+        eventStore.getEventBus().registerAsynchronousEventHandlers(MyEventHandlerChild.class);
+        eventStore.getEventBus().replay(SequencePosition.of(0));
+
+        await().untilAsserted(() -> assertThat(MyEventHandlerChild.childResetCalled).isTrue());
+        await().untilAsserted(() -> assertThat(MyEventHandlerParent.parentResetCalled).isTrue());
+    }
+
+    @Test
     void registeredSynchronousHandlerInstanceHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
@@ -241,7 +251,7 @@ public class EventHandlerTest {
         assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2); // 2 different events
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
 
-        eventStore.getEventBus().replay(EventStore.SequencePosition.of(42));
+        eventStore.getEventBus().replay(SequencePosition.of(42));
 
         assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42);
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
@@ -266,7 +276,7 @@ public class EventHandlerTest {
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
 
-        eventStore.getEventBus().replay(EventStore.SequencePosition.of(42));
+        eventStore.getEventBus().replay(SequencePosition.of(42));
 
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
@@ -274,9 +284,16 @@ public class EventHandlerTest {
 
     private static class MyEventHandlerChild extends MyEventHandlerParent {
 
+        private static boolean childResetCalled = false;
+
         @EventHandler
         private void handle(MyNewEvent myNewEvent) {
             myHandledEvents.add(myNewEvent);
+        }
+
+        @ResetHandler
+        private void resetHandledEvents() {
+            childResetCalled = true;
         }
 
     }
@@ -284,6 +301,7 @@ public class EventHandlerTest {
     private static class MyEventHandlerParent {
 
         static final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
+        private static boolean parentResetCalled = false;
 
         @EventHandler
         private void handle(MyEvent event) {
@@ -299,6 +317,12 @@ public class EventHandlerTest {
         private void handle(MyNewEvent myNewEvent) {
             throw new IllegalStateException("should not be invoked");
         }
+
+        @ResetHandler
+        private void resetHandledEvents() {
+            parentResetCalled = true;
+        }
+
 
     }
 

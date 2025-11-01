@@ -7,10 +7,7 @@ import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.QueryItem;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
-import nl.pancompany.eventstore.record.AppendCondition;
-import nl.pancompany.eventstore.record.Event;
-import nl.pancompany.eventstore.record.ReadOptions;
-import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.record.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -201,20 +198,4 @@ public class EventStore implements AutoCloseable {
         eventBus.close();
     }
 
-    public record SequencePosition(int value) implements Comparable<SequencePosition> {
-
-        public static SequencePosition of(int i) {
-            return new SequencePosition(i);
-        }
-
-        private SequencePosition incrementAndGet() {
-            return new SequencePosition(value + 1);
-        }
-
-        @Override
-        public int compareTo(SequencePosition anotherSequencePosition) {
-            return Integer.compare(this.value, anotherSequencePosition.value);
-        }
-
-    }
 }
