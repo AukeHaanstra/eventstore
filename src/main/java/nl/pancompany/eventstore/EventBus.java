@@ -30,7 +30,7 @@ public class EventBus implements AutoCloseable {
     private final Set<Runnable> synchronousResetHandlers = new HashSet<>();
     private final Set<Runnable> asynchronousResetHandlers = new HashSet<>();
 
-    public EventBus(EventStore eventStore) {
+    EventBus(EventStore eventStore) {
         this.eventStore = eventStore;
         registerShutdownHook();
     }
