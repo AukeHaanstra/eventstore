@@ -45,19 +45,28 @@ public class StateManager<T> {
     void load(T emptyStateInstance) {
         requireNonNull(emptyStateInstance);
         state = new State<>(emptyStateInstance, eventStore.read(query));
-        setEventSourcedCallbacks();
+        eventSourcedCallbacks = getEventSourcedCallbacks(stateClass);
         executeEventSourcedCallbacks();
     }
 
-    private void setEventSourcedCallbacks() {
-        Set<Method> stateClassMethods = Arrays.stream(stateClass.getDeclaredMethods())
+    /**
+     * Recursively find all *eventsourced* event handlers in the inheritance hierarchy, overwriting eventhandlers from superclasses
+     * with eventhandlers from subclasses for the same event type.
+     */
+    private Map<Type, InvocableEventHandler> getEventSourcedCallbacks(Class<? super T> clazz) {
+        if (clazz.getSuperclass() == null) {
+            return new HashMap<>(); // base case
+        }
+        Map<Type, InvocableEventHandler> eventSourcedCallbacks = getEventSourcedCallbacks(clazz.getSuperclass());
+        Set<Method> stateClassMethods = Arrays.stream(clazz.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(EventSourced.class))
                 .collect(Collectors.toSet());
         stateClassMethods.forEach(method -> method.setAccessible(true));
-        eventSourcedCallbacks = stateClassMethods.stream().collect(Collectors.toMap(
+        eventSourcedCallbacks.putAll(stateClassMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
                 method -> eventPayload -> invoke(method, eventPayload)
-        ));
+        )));
+        return eventSourcedCallbacks;
     }
 
     private Type getEventType(Method eventSourcedMethod) {
@@ -90,7 +99,7 @@ public class StateManager<T> {
     void load() {
         List<SequencedEvent> events = eventStore.read(query);
         state = initialStateCreator.createState(events);
-        setEventSourcedCallbacks();
+        eventSourcedCallbacks = getEventSourcedCallbacks(stateClass);
         executeEventSourcedCallbacks();
     }
 

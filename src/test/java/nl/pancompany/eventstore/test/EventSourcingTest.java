@@ -3,14 +3,15 @@ package nl.pancompany.eventstore.test;
 import nl.pancompany.eventstore.EventStore;
 import nl.pancompany.eventstore.StateManager;
 import nl.pancompany.eventstore.StateManager.StateManagerOptimisticLockingException;
+import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.EventSourced;
 import nl.pancompany.eventstore.annotation.StateCreator;
-import nl.pancompany.eventstore.record.Event;
-import nl.pancompany.eventstore.record.SequencedEvent;
 import nl.pancompany.eventstore.exception.StateConstructionFailedException;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
+import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.record.SequencedEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,27 @@ public class EventSourcingTest {
         StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
 
         MyState state = stateManager.getState().get();
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
+
+        // Assert
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
+        sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, event3);
+    }
+
+    @Test
+    void rehydratesParentChildStateViewModel() {
+        // Arrange
+        eventStore.append(event0, event1,event2);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2);
+
+        // Act (just like in a command handler)
+        StateManager<MyStateChild> stateManager = eventStore.loadState(MyStateChild.class, query);
+
+        MyStateChild state = stateManager.getState().get();
         // < business rules validation and decision-making (state change or automation) >
 
         stateManager.apply(myNewEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyNewEvent.class));
@@ -325,6 +347,41 @@ public class EventSourcingTest {
         @EventSourced
         private void handle(MyNewEvent myNewEvent) {
             myHandledEvents.add(myNewEvent);
+        }
+
+    }
+
+    private static class MyStateChild extends MyStateParent {
+
+        @StateCreator
+        private MyStateChild(MyInitialEvent event) {
+            myHandledEvents.add(event);
+        }
+
+        @EventSourced
+        private void handle(MyNewEvent myNewEvent) {
+            myHandledEvents.add(myNewEvent);
+        }
+
+    }
+
+    private static class MyStateParent {
+
+        final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
+
+        @EventSourced
+        private void handle(MyEvent event) {
+            myHandledEvents.add(event);
+        }
+
+        @EventSourced
+        private void handle(MyOtherEvent myOtherEvent) {
+            myHandledEvents.add(myOtherEvent);
+        }
+
+        @EventHandler // should not be invoked, subclass method takes precedence
+        private void handle(MyNewEvent myNewEvent) {
+            throw new IllegalStateException("should not be invoked");
         }
 
     }

@@ -96,16 +96,29 @@ public class EventBus implements AutoCloseable {
     }
 
     private void registerEventHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
-        Set<Method> eventHandlerMethods = Arrays.stream(eventHandlerClass.getDeclaredMethods()).filter(
-                method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
-        eventHandlerMethods.forEach(method -> method.setAccessible(true));
-        Map<Type, InvocableEventHandler> newEventHandlers = eventHandlerMethods.stream().collect(Collectors.toMap(
-                this::getEventType,
-                method -> event -> invoke(method, instance, event)
-        ));
+        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(eventHandlerClass, instance);
         Map<Type, Set<InvocableEventHandler>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
                 .add(newEventHandlers.get(key)));
+    }
+
+    /**
+     * Recursively find all event handlers in the inheritance hierarchy, overwriting eventhandlers from superclasses
+     * with eventhandlers from subclasses for the same event type.
+     */
+    private Map<Type, InvocableEventHandler> getNewEventHandlers(Class<?> clazz, Object instance) {
+        if (clazz.getSuperclass() == null) {
+            return new HashMap<>(); // base case
+        }
+        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(clazz.getSuperclass(), instance);
+        Set<Method> eventHandlerMethods = Arrays.stream(clazz.getDeclaredMethods()).filter(
+                method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
+        eventHandlerMethods.forEach(method -> method.setAccessible(true));
+        newEventHandlers.putAll(eventHandlerMethods.stream().collect(Collectors.toMap(
+                this::getEventType,
+                method -> event -> invoke(method, instance, event)
+        )));
+        return newEventHandlers;
     }
 
     private Type getEventType(Method eventHandlerMethod) {

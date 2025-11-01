@@ -118,6 +118,18 @@ public class EventHandlerTest {
     }
 
     @Test
+    void registeredAsynchronousParentChildHandlersHandleEvents() {
+        MyEvent myEvent = new MyEvent("data");
+        MyOtherEvent myOtherEvent = new MyOtherEvent("data");
+        MyNewEvent myNewEvent = new MyNewEvent("data");
+
+        eventStore.getEventBus().registerAsynchronousEventHandlers(MyEventHandlerChild.class);
+        eventStore.append(new Event(myEvent), new Event(myOtherEvent), new Event(myNewEvent));
+
+        await().untilAsserted(() -> assertThat(MyEventHandlerChild.myHandledEvents).containsExactly(myEvent, myOtherEvent, myNewEvent));
+    }
+
+    @Test
     void registeredSynchronousHandlerInstanceHandlesEvent() {
         MyEvent myEvent = new MyEvent("data");
 
@@ -260,6 +272,36 @@ public class EventHandlerTest {
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
     }
 
+    private static class MyEventHandlerChild extends MyEventHandlerParent {
+
+        @EventHandler
+        private void handle(MyNewEvent myNewEvent) {
+            myHandledEvents.add(myNewEvent);
+        }
+
+    }
+
+    private static class MyEventHandlerParent {
+
+        static final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
+
+        @EventHandler
+        private void handle(MyEvent event) {
+            myHandledEvents.add(event);
+        }
+
+        @EventHandler
+        private void handle(MyOtherEvent myOtherEvent) {
+            myHandledEvents.add(myOtherEvent);
+        }
+
+        @EventHandler // should not be invoked, subclass method takes precedence
+        private void handle(MyNewEvent myNewEvent) {
+            throw new IllegalStateException("should not be invoked");
+        }
+
+    }
+
     public static class RecordingEventHandlerClass {
 
         private static final List<Object> myHandledEvents = new CopyOnWriteArrayList<>();
@@ -386,6 +428,13 @@ public class EventHandlerTest {
     record MyEvent(String id, String data) {
 
         public MyEvent(String data) {
+            this(UUID.randomUUID().toString(), data);
+        }
+    }
+
+    record MyNewEvent(String id, String data) {
+
+        public MyNewEvent(String data) {
             this(UUID.randomUUID().toString(), data);
         }
     }
