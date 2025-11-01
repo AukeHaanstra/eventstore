@@ -112,7 +112,7 @@ public class EventBus implements AutoCloseable {
             logException(LoggedException.of("Could not invoke reset handler %s".formatted(method), e));
         } catch (InvocationTargetException e) {
             log.warn("Reset handler threw exception. Method: {}", method, e);
-            logException(LoggedException.of("Reset handler threw exception. Method: %s".formatted(method), e));
+            logException(LoggedException.of("Reset handler threw exception. Method: %s".formatted(method), e.getCause()));
         }
     }
 
@@ -185,7 +185,7 @@ public class EventBus implements AutoCloseable {
             logException(LoggedException.of("Could not invoke handler method for event %s".formatted(eventPayload), e));
         } catch (InvocationTargetException e) {
             log.warn("Invoked handler threw exception for event {}", eventPayload, e);
-            logException(LoggedException.of("Invoked handler threw exception for event %s".formatted(eventPayload), e));
+            logException(LoggedException.of("Invoked handler threw exception for event %s".formatted(eventPayload), e.getCause()));
         }
     }
 

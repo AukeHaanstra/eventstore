@@ -204,9 +204,8 @@ public class EventHandlerTest {
         List<LoggedException> loggedExceptions = eventStore.getEventBus().getLoggedExceptions();
         assertThat(loggedExceptions).hasSize(1);
         LoggedException loggedException = loggedExceptions.getFirst();
-        assertThat(loggedException.exception()).isInstanceOf(InvocationTargetException.class);
-        assertThat(loggedException.exception().getCause()).isInstanceOf(IllegalArgumentException.class);
-        assertThat(loggedException.exception().getCause().getMessage()).isEqualTo("test");
+        assertThat(loggedException.exception()).isInstanceOf(IllegalArgumentException.class);
+        assertThat(loggedException.exception().getMessage()).isEqualTo("test");
         assertThat(loggedException.logMessage()).isNotEmpty();
     }
 
@@ -221,7 +220,7 @@ public class EventHandlerTest {
         await().untilAsserted(() -> {
             List<LoggedException> loggedExceptions = eventStore.getEventBus().getLoggedExceptions();
             LoggedException lastLoggedException = loggedExceptions.getLast();
-            assertThat(lastLoggedException.exception().getCause().getMessage()).isEqualTo("142");
+            assertThat(lastLoggedException.exception().getMessage()).isEqualTo("142");
             assertThat(loggedExceptions).hasSize(100);
         });
     }
