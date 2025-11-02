@@ -3,8 +3,8 @@ package nl.pancompany.eventstore;
 import nl.pancompany.eventstore.annotation.StateCreator;
 import nl.pancompany.eventstore.exception.StateConstructionFailedException;
 import nl.pancompany.eventstore.query.Type;
-import nl.pancompany.eventstore.record.Event;
-import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.data.Event;
+import nl.pancompany.eventstore.data.SequencedEvent;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;

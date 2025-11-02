@@ -1,8 +1,8 @@
 package nl.pancompany.eventstore.test;
 
 import nl.pancompany.eventstore.EventStore;
-import nl.pancompany.eventstore.record.Event;
-import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.data.Event;
+import nl.pancompany.eventstore.data.SequencedEvent;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.QueryItem;
 import nl.pancompany.eventstore.query.Type;

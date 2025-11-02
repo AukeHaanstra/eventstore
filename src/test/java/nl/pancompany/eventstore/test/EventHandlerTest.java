@@ -1,21 +1,23 @@
 package nl.pancompany.eventstore.test;
 
+import nl.pancompany.eventstore.EventBus;
 import nl.pancompany.eventstore.EventStore;
-import nl.pancompany.eventstore.record.LoggedException;
-import nl.pancompany.eventstore.record.SequencePosition;
+import nl.pancompany.eventstore.data.LoggedException;
+import nl.pancompany.eventstore.data.SequencePosition;
 import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.ResetHandler;
-import nl.pancompany.eventstore.record.Event;
+import nl.pancompany.eventstore.data.Event;
 import nl.pancompany.eventstore.query.Type;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import static java.lang.System.currentTimeMillis;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -197,6 +199,7 @@ public class EventHandlerTest {
 
     @Test
     void eventBusStoresAndLogsException() {
+        Logger.getLogger(EventBus.class.getName()).setLevel(Level.OFF); // remove to show exception
         eventStore.getEventBus().registerAsynchronousEventHandler(ThrowingEventHandlerClass.class);
         eventStore.append(new Event(new MyEvent("test")));
 
@@ -211,6 +214,7 @@ public class EventHandlerTest {
 
     @Test
     void eventBusStoresMax100ExceptionsAndOperatesLIFO() {
+        Logger.getLogger(EventBus.class.getName()).setLevel(Level.OFF);
         eventStore.getEventBus().registerAsynchronousEventHandler(ThrowingEventHandlerClass.class);
         for (int i = 0; i <= 142; i++) {
             eventStore.append(new Event(new MyEvent("" + i)));

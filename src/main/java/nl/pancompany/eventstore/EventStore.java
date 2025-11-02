@@ -7,12 +7,10 @@ import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.QueryItem;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
-import nl.pancompany.eventstore.record.*;
+import nl.pancompany.eventstore.data.*;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
@@ -114,7 +112,7 @@ public class EventStore implements AutoCloseable {
             }
             for (Event event : events) {
                 lastInsertPosition = SequencePosition.of(storedEvents.size());
-                Map<String, String> metadata = Map.of("timestamp", Instant.now(clock).toString());
+                Metadata metadata = Metadata.of("timestamp", Instant.now(clock).toString());
                 SequencedEvent storedEvent = new SequencedEvent(event, lastInsertPosition, metadata);
                 storedEvents.add(storedEvent);
                 addedEvents.offer(storedEvent); // offer() and writeLock guarantee sequential filling of queue

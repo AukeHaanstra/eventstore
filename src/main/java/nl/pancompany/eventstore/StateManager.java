@@ -7,10 +7,10 @@ import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Tags;
 import nl.pancompany.eventstore.query.Type;
-import nl.pancompany.eventstore.record.AppendCondition;
-import nl.pancompany.eventstore.record.Event;
-import nl.pancompany.eventstore.record.SequencePosition;
-import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.data.AppendCondition;
+import nl.pancompany.eventstore.data.Event;
+import nl.pancompany.eventstore.data.SequencePosition;
+import nl.pancompany.eventstore.data.SequencedEvent;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;

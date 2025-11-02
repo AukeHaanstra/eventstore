@@ -1,4 +1,4 @@
-package nl.pancompany.eventstore.record;
+package nl.pancompany.eventstore.data;
 
 /**
  * @param startingPosition Start position, inclusive, possible range is [0, {@literal <last-position>}]

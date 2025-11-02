@@ -1,20 +1,17 @@
-package nl.pancompany.eventstore.record;
+package nl.pancompany.eventstore.data;
 
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
-public record Event(Object payload, Set<Tag> tags, Type type, Map<String, String> metadata) {
+public record Event(Object payload, Set<Tag> tags, Type type, Optional<Metadata> metadata) {
 
     public Event(Object payload, Set<Tag> tags, Type type) {
-        this(payload, tags, type, null);
+        this(payload, tags, type, Optional.empty());
     }
 
     public Event(Object payload) {
@@ -99,8 +96,8 @@ public record Event(Object payload, Set<Tag> tags, Type type, Map<String, String
         return new Event(payload, type, tags);
     }
 
-    public Event withMetadata(Map<String, String> metadata) {
-        return new Event(payload, tags, type, metadata);
+    public Event withMetadata(Metadata metadata) {
+        return new Event(payload, tags, type, Optional.of(metadata));
     }
 
     private static Type getName(Object payload) {

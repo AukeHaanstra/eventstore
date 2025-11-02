@@ -1,10 +1,7 @@
 package nl.pancompany.eventstore.test;
 
 import nl.pancompany.eventstore.EventStore;
-import nl.pancompany.eventstore.record.AppendCondition;
-import nl.pancompany.eventstore.record.Event;
-import nl.pancompany.eventstore.record.ReadOptions;
-import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.data.*;
 import nl.pancompany.eventstore.exception.AppendConditionNotSatisfied;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Tag;
@@ -14,7 +11,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
 
@@ -68,13 +64,14 @@ public class EventStoreDcbTest {
     @Test
     void retrievesEventWithMetadata() {
         var myEvent = new MyEvent("data");
-        Event event = new Event(myEvent, Set.of(Tag.of("test"))).withMetadata(Map.of("client", "metadata"));
+        Event event = new Event(myEvent, Set.of(Tag.of("test"))).withMetadata(Metadata.of("client", "metadata"));
 
         eventStore.append(event);
 
         List<SequencedEvent> sequencedEvents = eventStore.read(Query.taggedWith("test").build());
         assertThat(toEvents(sequencedEvents)).containsExactly(event);
-        assertThat(sequencedEvents.getFirst().clientMetadata().get("client")).isEqualTo("metadata");
+        assertThat(sequencedEvents.getFirst().clientMetadata()).isPresent();
+        assertThat(sequencedEvents.getFirst().clientMetadata().get().get("client")).isEqualTo("metadata");
         assertThat(sequencedEvents.getFirst().eventStoreMetadata().get("timestamp")).isEqualTo("1970-01-01T00:00:00Z");
     }
 

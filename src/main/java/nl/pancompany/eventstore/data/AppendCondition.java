@@ -1,4 +1,4 @@
-package nl.pancompany.eventstore.record;
+package nl.pancompany.eventstore.data;
 
 import nl.pancompany.eventstore.query.Query;
 

@@ -1,4 +1,4 @@
-package nl.pancompany.eventstore.record;
+package nl.pancompany.eventstore.data;
 
 public record SequencePosition(int value) implements Comparable<SequencePosition> {
 

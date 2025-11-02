@@ -1,16 +1,15 @@
-package nl.pancompany.eventstore.record;
+package nl.pancompany.eventstore.data;
 
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequencePosition position,
-                             Map<String, String> clientMetadata, Map<String, String> eventStoreMetadata) {
+                             Optional<Metadata> clientMetadata, Metadata eventStoreMetadata) {
 
-    public SequencedEvent(Event event, SequencePosition position, Map<String, String> eventStoreMetadata) {
+    public SequencedEvent(Event event, SequencePosition position, Metadata eventStoreMetadata) {
         this(event.payload(), event.tags(), event.type(), position, event.metadata(), eventStoreMetadata);
     }
 

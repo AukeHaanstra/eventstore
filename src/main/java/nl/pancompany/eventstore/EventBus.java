@@ -5,10 +5,10 @@ import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Type;
-import nl.pancompany.eventstore.record.LoggedException;
-import nl.pancompany.eventstore.record.ReadOptions;
-import nl.pancompany.eventstore.record.SequencePosition;
-import nl.pancompany.eventstore.record.SequencedEvent;
+import nl.pancompany.eventstore.data.LoggedException;
+import nl.pancompany.eventstore.data.ReadOptions;
+import nl.pancompany.eventstore.data.SequencePosition;
+import nl.pancompany.eventstore.data.SequencedEvent;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
