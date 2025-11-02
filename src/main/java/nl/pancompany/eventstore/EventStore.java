@@ -16,7 +16,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.stream.Collectors;
 
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -111,7 +110,7 @@ public class EventStore implements AutoCloseable {
         try {
             writeLock.lock();
             if (appendCondition != null) {
-                checkWhetherEventsFailAppendCondition(appendCondition);
+                checkWhetherAppendConditionFails(events, appendCondition);
             }
             for (Event event : events) {
                 lastInsertPosition = SequencePosition.of(storedEvents.size());
@@ -136,20 +135,30 @@ public class EventStore implements AutoCloseable {
         return Optional.ofNullable(lastInsertPosition);
     }
 
-    private void checkWhetherEventsFailAppendCondition(AppendCondition appendCondition) throws AppendConditionNotSatisfied {
+    private void checkWhetherAppendConditionFails(List<Event> events, AppendCondition appendCondition) throws AppendConditionNotSatisfied {
         List<SequencedEvent> queryResult = queryEvents(
                 appendCondition.failIfEventsMatch(),
                 appendCondition.after() == null ? null : ReadOptions.builder()
                         .withStartingPosition(appendCondition.after().incrementAndGet().value()).build());
         if (!queryResult.isEmpty()) {
             if (appendCondition.after() == null) {
-                throw new AppendConditionNotSatisfied("""
-                        One or more events matched the provided failIfEventsMatch query.
-                        Events: %s%n -""".formatted(queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))));
+                throw new AppendConditionNotSatisfied(
+                        """
+                                Apply() failed for events:%n -%s
+                                One or more events matched the provided failIfEventsMatch query.
+                                Matching events:%n -%s""".formatted(
+                                events.stream().map(Event::toString).collect(joining(format("%n -"))),
+                                queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))
+                        ));
             }
-            throw new AppendConditionNotSatisfied("""
-                        One or more events matched the provided failIfEventsMatch query after sequence number.
-                        Events: %s%n -""".formatted(queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))));
+            throw new AppendConditionNotSatisfied(
+                    """
+                            Apply() failed for events:%n -%s
+                            One or more events matched the provided failIfEventsMatch query after sequence number %s.
+                            Matching events:%n -%s-""".formatted(
+                            events.stream().map(Event::toString).collect(joining(format("%n -"))),
+                            appendCondition.after(), queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))
+                    ));
         }
     }
 
