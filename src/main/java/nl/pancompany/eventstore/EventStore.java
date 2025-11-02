@@ -144,18 +144,18 @@ public class EventStore implements AutoCloseable {
             if (appendCondition.after() == null) {
                 throw new AppendConditionNotSatisfied(
                         """
-                                Apply() failed for events:%n -%s
+                                Apply() failed for events:%n - %s
                                 One or more events matched the provided failIfEventsMatch query.
-                                Matching events:%n -%s""".formatted(
+                                Matching events:%n - %s""".formatted(
                                 events.stream().map(Event::toString).collect(joining(format("%n -"))),
                                 queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))
                         ));
             }
             throw new AppendConditionNotSatisfied(
                     """
-                            Apply() failed for events:%n -%s
+                            Apply() failed for events:%n - %s
                             One or more events matched the provided failIfEventsMatch query after sequence number %s.
-                            Matching events:%n -%s-""".formatted(
+                            Matching events:%n - %s-""".formatted(
                             events.stream().map(Event::toString).collect(joining(format("%n -"))),
                             appendCondition.after(), queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))
                     ));

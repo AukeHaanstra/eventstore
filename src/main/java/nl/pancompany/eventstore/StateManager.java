@@ -145,8 +145,8 @@ public class StateManager<T> {
                         .build()).get();
             } catch (AppendConditionNotSatisfied e) {
                 throw new StateManager.StateManagerOptimisticLockingException(
-                        "A unmanaged state-modifying event was stored after event sourcing but before applying the " +
-                                "current state-modifying (event), please retry.", e);
+                        "An (unmanaged) state-modifying event was stored after event sourcing but before applying the " +
+                                "current state-modifying event, please retry.", e);
             }
         }
     }
