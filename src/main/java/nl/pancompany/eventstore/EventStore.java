@@ -16,8 +16,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.joining;
 
 @Slf4j
 public class EventStore implements AutoCloseable {
@@ -140,9 +143,13 @@ public class EventStore implements AutoCloseable {
                         .withStartingPosition(appendCondition.after().incrementAndGet().value()).build());
         if (!queryResult.isEmpty()) {
             if (appendCondition.after() == null) {
-                throw new AppendConditionNotSatisfied("An event matched the provided failIfEventsMatch query");
+                throw new AppendConditionNotSatisfied("""
+                        One or more events matched the provided failIfEventsMatch query.
+                        Events: %s%n -""".formatted(queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))));
             }
-            throw new AppendConditionNotSatisfied("An event matched the provided failIfEventsMatch query after sequence number " + appendCondition.after());
+            throw new AppendConditionNotSatisfied("""
+                        One or more events matched the provided failIfEventsMatch query after sequence number.
+                        Events: %s%n -""".formatted(queryResult.stream().map(SequencedEvent::toString).collect(joining(format("%n -")))));
         }
     }
 
