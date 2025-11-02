@@ -12,8 +12,12 @@ import org.junit.jupiter.api.Test;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
+import static nl.pancompany.eventstore.data.SequencedEvent.toEvents;
 import static org.assertj.core.api.Assertions.*;
 
 public class EventStoreDcbTest {
@@ -342,10 +346,6 @@ public class EventStoreDcbTest {
                 eventStore.append(event4, AppendCondition.builder().failIfEventsMatch(Query.taggedWith("event3").build()).after(1).build()))
                 .isInstanceOf(AppendConditionNotSatisfied.class);
         assertThat(eventStore.read(Query.all())).hasSize(3);
-    }
-
-    private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
-        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
 }

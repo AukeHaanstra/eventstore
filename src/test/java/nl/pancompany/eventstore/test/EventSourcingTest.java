@@ -6,12 +6,12 @@ import nl.pancompany.eventstore.StateManager.StateManagerOptimisticLockingExcept
 import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.EventSourced;
 import nl.pancompany.eventstore.annotation.StateCreator;
+import nl.pancompany.eventstore.data.Event;
+import nl.pancompany.eventstore.data.SequencedEvent;
 import nl.pancompany.eventstore.exception.StateConstructionFailedException;
 import nl.pancompany.eventstore.query.Query;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
-import nl.pancompany.eventstore.data.Event;
-import nl.pancompany.eventstore.data.SequencedEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import static nl.pancompany.eventstore.data.SequencedEvent.toEvents;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -289,10 +290,6 @@ public class EventSourcingTest {
         assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, unsourced, unsourced);
-    }
-
-    private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
-        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
     private static class InvalidStateClass {

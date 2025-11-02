@@ -1,12 +1,11 @@
 package nl.pancompany.eventstore.test;
 
-import nl.pancompany.eventstore.EventBus;
 import nl.pancompany.eventstore.EventStore;
-import nl.pancompany.eventstore.data.LoggedException;
-import nl.pancompany.eventstore.data.SequencePosition;
 import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.data.Event;
+import nl.pancompany.eventstore.data.LoggedException;
+import nl.pancompany.eventstore.data.SequencePosition;
 import nl.pancompany.eventstore.query.Type;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,10 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 import static java.lang.System.currentTimeMillis;
+import static nl.pancompany.eventstore.test.TestUtil.withoutLogging;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
@@ -199,33 +197,35 @@ public class EventHandlerTest {
 
     @Test
     void eventBusStoresAndLogsException() {
-        Logger.getLogger(EventBus.class.getName()).setLevel(Level.OFF); // remove to show exception
-        eventStore.getEventBus().registerAsynchronousEventHandler(ThrowingEventHandlerClass.class);
-        eventStore.append(new Event(new MyEvent("test")));
+        withoutLogging(() -> {
+            eventStore.getEventBus().registerAsynchronousEventHandler(ThrowingEventHandlerClass.class);
+            eventStore.append(new Event(new MyEvent("test")));
 
-        await().untilAsserted(() -> assertThat(eventStore.getEventBus().hasLoggedExceptions()).isTrue());
-        List<LoggedException> loggedExceptions = eventStore.getEventBus().getLoggedExceptions();
-        assertThat(loggedExceptions).hasSize(1);
-        LoggedException loggedException = loggedExceptions.getFirst();
-        assertThat(loggedException.exception()).isInstanceOf(IllegalArgumentException.class);
-        assertThat(loggedException.exception().getMessage()).isEqualTo("test");
-        assertThat(loggedException.logMessage()).isNotEmpty();
+            await().untilAsserted(() -> assertThat(eventStore.getEventBus().hasLoggedExceptions()).isTrue());
+            List<LoggedException> loggedExceptions = eventStore.getEventBus().getLoggedExceptions();
+            assertThat(loggedExceptions).hasSize(1);
+            LoggedException loggedException = loggedExceptions.getFirst();
+            assertThat(loggedException.exception()).isInstanceOf(IllegalArgumentException.class);
+            assertThat(loggedException.exception().getMessage()).isEqualTo("test");
+            assertThat(loggedException.logMessage()).isNotEmpty();
+        });
     }
 
     @Test
     void eventBusStoresMax100ExceptionsAndOperatesLIFO() {
-        Logger.getLogger(EventBus.class.getName()).setLevel(Level.OFF);
-        eventStore.getEventBus().registerAsynchronousEventHandler(ThrowingEventHandlerClass.class);
-        for (int i = 0; i <= 142; i++) {
-            eventStore.append(new Event(new MyEvent("" + i)));
-        }
+        withoutLogging(() -> {
+            eventStore.getEventBus().registerAsynchronousEventHandler(ThrowingEventHandlerClass.class);
+            for (int i = 0; i <= 142; i++) {
+                eventStore.append(new Event(new MyEvent("" + i)));
+            }
 
-        await().untilAsserted(() -> assertThat(eventStore.getEventBus().hasLoggedExceptions()).isTrue());
-        await().untilAsserted(() -> {
-            List<LoggedException> loggedExceptions = eventStore.getEventBus().getLoggedExceptions();
-            LoggedException lastLoggedException = loggedExceptions.getLast();
-            assertThat(lastLoggedException.exception().getMessage()).isEqualTo("142");
-            assertThat(loggedExceptions).hasSize(100);
+            await().untilAsserted(() -> assertThat(eventStore.getEventBus().hasLoggedExceptions()).isTrue());
+            await().untilAsserted(() -> {
+                List<LoggedException> loggedExceptions = eventStore.getEventBus().getLoggedExceptions();
+                LoggedException lastLoggedException = loggedExceptions.getLast();
+                assertThat(lastLoggedException.exception().getMessage()).isEqualTo("142");
+                assertThat(loggedExceptions).hasSize(100);
+            });
         });
     }
 

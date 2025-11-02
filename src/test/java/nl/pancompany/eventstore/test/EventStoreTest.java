@@ -16,6 +16,7 @@ import java.util.concurrent.*;
 
 import static java.util.Collections.emptyList;
 import static java.util.Collections.singletonList;
+import static nl.pancompany.eventstore.data.SequencedEvent.toEvents;
 import static org.assertj.core.api.Assertions.*;
 
 public class EventStoreTest {
@@ -128,10 +129,6 @@ public class EventStoreTest {
         assertThat(sequencedEvents).hasSize(expectedEventsSize); // Check for duplicate writes on the same index (then size smaller than expected)
         assertThat(toEvents(sequencedEvents)).containsExactlyInAnyOrderElementsOf(myEvents);
         assertThat(new java.util.HashSet<>(sequencedEvents)).hasSize(expectedEventsSize);
-    }
-
-    private static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
-        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
     }
 
 }

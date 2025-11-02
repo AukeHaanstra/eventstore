@@ -3,6 +3,8 @@ package nl.pancompany.eventstore.data;
 import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -28,6 +30,14 @@ public record SequencedEvent(Object payload, Set<Tag> tags, Type type, SequenceP
      */
     public Event toEvent() {
         return new Event(payload(), tags, type, clientMetadata);
+    }
+
+    public static List<Event> toEvents(List<SequencedEvent> sequencedEvents) {
+        return sequencedEvents.stream().map(SequencedEvent::toEvent).toList();
+    }
+
+    public static List<Event> toEvents(SequencedEvent... sequencedEvents) {
+        return Arrays.stream(sequencedEvents).map(SequencedEvent::toEvent).toList();
     }
 
 }
