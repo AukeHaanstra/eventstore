@@ -175,7 +175,7 @@ public class EventBus implements AutoCloseable {
     /**
      * Resets and replays events to registered replayable event handlers, see {@link EventHandler#enableReplay()}.
      *
-     * @param end end position, exclusive
+     * @param end end position, exclusive, starting from sequence position of 0
      */
     synchronized public void replay(SequencePosition end) {
         List<SequencedEvent> eventsToReplay = eventStore.read(Query.all(), ReadOptions.builder()
