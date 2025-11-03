@@ -162,6 +162,15 @@ public class EventStore implements AutoCloseable {
         }
     }
 
+    public Optional<SequencePosition> getLastSequencePosition() {
+        try {
+            readLock.lock();
+            return storedEvents.isEmpty() ? Optional.empty() : Optional.of(SequencePosition.of(storedEvents.size() - 1));
+        } finally {
+            readLock.unlock();
+        }
+    }
+
     public List<SequencedEvent> read(Query query) {
         requireNonNull(query);
         return read(query, null);

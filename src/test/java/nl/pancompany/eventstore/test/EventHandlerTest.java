@@ -259,7 +259,7 @@ public class EventHandlerTest {
     }
 
     @Test
-    void resetStreamsSubsetOfEventsAgain() {
+    void replayStreamsSubsetOfEventsAgain() {
         int batchSize = 50;
         List<Event> events = new ArrayList<>();
         List<Object> myEvents = new ArrayList<>();
@@ -284,7 +284,7 @@ public class EventHandlerTest {
     }
 
     @Test
-    void resetStreamsSubsetOfEventsAgainAsync() {
+    void replayStreamsSubsetOfEventsAgainAsync() {
         int batchSize = 50;
         List<Event> events = new ArrayList<>();
         List<Object> myEvents = new ArrayList<>();
@@ -306,6 +306,89 @@ public class EventHandlerTest {
 
         await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42));
         assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents.subList(0, 42));
+    }
+
+    @Test
+    void replayStreamsAllEventsAgainAsync() {
+        int batchSize = 50;
+        List<Event> events = new ArrayList<>();
+        List<Object> myEvents = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            MyEvent myEvent = new MyEvent(Integer.toString(i));
+            events.add(new Event(myEvent));
+            myEvents.add(myEvent);
+            MyOtherEvent myOtherEvent = new MyOtherEvent(Integer.toString(i));
+            events.add(new Event(myOtherEvent));
+            myEvents.add(myOtherEvent);
+        }
+
+        eventStore.getEventBus().registerAsynchronousEventHandler(RecordingEventHandlerClass.class);
+        events.forEach(event -> eventStore.append(event));
+        await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
+        assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
+
+        eventStore.getEventBus().replay();
+
+        await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
+        assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
+    }
+
+    @Test
+    void replayUpToLastSequencePositionStreamsAllEventsAgainAsync() {
+        int batchSize = 50;
+        List<Event> events = new ArrayList<>();
+        List<Object> myEvents = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            MyEvent myEvent = new MyEvent(Integer.toString(i));
+            events.add(new Event(myEvent));
+            myEvents.add(myEvent);
+            MyOtherEvent myOtherEvent = new MyOtherEvent(Integer.toString(i));
+            events.add(new Event(myOtherEvent));
+            myEvents.add(myOtherEvent);
+        }
+
+        eventStore.getEventBus().registerAsynchronousEventHandler(RecordingEventHandlerClass.class);
+        events.forEach(event -> eventStore.append(event));
+        await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
+        assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
+
+        eventStore.getEventBus().replay(eventStore.getLastSequencePosition().get().incrementAndGet()); // querying eventstore for last sequence position
+
+        await().untilAsserted(() -> assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 2));
+        assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(myEvents);
+    }
+
+    @Test
+    void replayStreamsSubsetOfEventsAgainOnlyToReplayEnabledHandlers() {
+        int batchSize = 50;
+        List<Event> events = new ArrayList<>();
+        List<Object> replayableEvents = new ArrayList<>();
+        List<Object> nonReplayableEvents = new ArrayList<>();
+        for (int i = 0; i < batchSize; i++) {
+            MyEvent myEvent = new MyEvent(Integer.toString(i));
+            events.add(new Event(myEvent));
+            replayableEvents.add(myEvent);
+            MyOtherEvent myOtherEvent = new MyOtherEvent(Integer.toString(i));
+            events.add(new Event(myOtherEvent));
+            replayableEvents.add(myOtherEvent);
+
+            MyNewEvent myNewEvent = new MyNewEvent(Integer.toString(i));
+            nonReplayableEvents.add(myNewEvent);
+            events.add(new Event(myNewEvent)); // append to event store, but don't put in expectations
+        }
+
+        eventStore.getEventBus().registerSynchronousEventHandler(RecordingEventHandlerClass.class);
+        events.forEach(event -> eventStore.append(event));
+        assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(batchSize * 3); // 3 different events
+        assertThat(RecordingEventHandlerClass.myHandledEvents)
+                .containsSubsequence(replayableEvents)
+                .containsSubsequence(nonReplayableEvents);
+
+        eventStore.getEventBus().replay(SequencePosition.of(63));
+
+        assertThat(RecordingEventHandlerClass.myHandledEvents).hasSize(42); // only 2/3 of events should have been replayed
+        // Don't expect any MyNewEvent
+        assertThat(RecordingEventHandlerClass.myHandledEvents).containsExactlyElementsOf(replayableEvents.subList(0, 42));
     }
 
     private static class MyEventHandlerChild extends MyEventHandlerParent {
@@ -361,14 +444,19 @@ public class EventHandlerTest {
             myHandledEvents.clear();
         }
 
-        @EventHandler
+        @EventHandler(enableReplay = true)
         private void handle(MyEvent event) {
             myHandledEvents.add(event);
         }
 
-        @EventHandler
+        @EventHandler(enableReplay = true)
         private void handle(MyOtherEvent myOtherEvent) {
             myHandledEvents.add(myOtherEvent);
+        }
+
+        @EventHandler
+        private void handle(MyNewEvent myNewEvent) {
+            myHandledEvents.add(myNewEvent);
         }
 
     }

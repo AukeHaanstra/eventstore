@@ -7,4 +7,5 @@ import java.lang.annotation.*;
 @Target({ElementType.METHOD})
 public @interface EventHandler {
     String type() default "";
+    boolean enableReplay() default false;
 }

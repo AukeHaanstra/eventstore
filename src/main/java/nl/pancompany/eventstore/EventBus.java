@@ -26,6 +26,8 @@ public class EventBus implements AutoCloseable {
     private final EventStore eventStore;
     private final Map<Type, Set<InvocableEventHandler>> synchronousEventHandlers = new HashMap<>();
     private final Map<Type, Set<InvocableEventHandler>> asynchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableEventHandler>> synchronousReplayableEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableEventHandler>> asynchronousReplayableEventHandlers = new HashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Runnable> synchronousResetHandlers = new HashSet<>();
     private final Set<Runnable> asynchronousResetHandlers = new HashSet<>();
@@ -117,23 +119,30 @@ public class EventBus implements AutoCloseable {
     }
 
     private void registerEventHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
-        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(eventHandlerClass, instance);
+        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(eventHandlerClass, instance, false);
         Map<Type, Set<InvocableEventHandler>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
                 .add(newEventHandlers.get(key)));
+
+        Map<Type, InvocableEventHandler> newReplayableEventHandlers = getNewEventHandlers(eventHandlerClass, instance, true);
+        Map<Type, Set<InvocableEventHandler>> replayableEventHandlers = synchronous ? synchronousReplayableEventHandlers : asynchronousReplayableEventHandlers;
+        newReplayableEventHandlers.keySet().forEach(key -> replayableEventHandlers.computeIfAbsent(key, type -> new HashSet<>())
+                .add(newReplayableEventHandlers.get(key)));
     }
 
     /**
      * Recursively find all event handlers in the inheritance hierarchy, overwriting eventhandlers from superclasses
      * with eventhandlers from subclasses for the same event type.
      */
-    private Map<Type, InvocableEventHandler> getNewEventHandlers(Class<?> clazz, Object instance) {
+    private Map<Type, InvocableEventHandler> getNewEventHandlers(Class<?> clazz, Object instance, boolean onlyReplayable) {
         if (clazz == null) {
             return new HashMap<>(); // base case
         }
-        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(clazz.getSuperclass(), instance);
-        Set<Method> eventHandlerMethods = Arrays.stream(clazz.getDeclaredMethods()).filter(
-                method -> method.isAnnotationPresent(EventHandler.class)).collect(Collectors.toSet());
+        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(clazz.getSuperclass(), instance, onlyReplayable);
+        Set<Method> eventHandlerMethods = Arrays.stream(clazz.getDeclaredMethods())
+                .filter(method -> method.isAnnotationPresent(EventHandler.class))
+                .filter(method -> !onlyReplayable || isReplayEnabled(method))
+                .collect(Collectors.toSet());
         eventHandlerMethods.forEach(method -> method.setAccessible(true));
         newEventHandlers.putAll(eventHandlerMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
@@ -151,8 +160,20 @@ public class EventBus implements AutoCloseable {
         return Type.getTypeForAnnotatedParameter(annotation, declaredParameterType);
     }
 
+    private boolean isReplayEnabled(Method eventHandlerMethod) {
+        EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
+        return annotation.enableReplay();
+    }
+
     /**
-     * Resets and replays events to registered event handlers.
+     * Resets and replays all events to registered replayable event handlers, see {@link EventHandler#enableReplay()}.
+     */
+    synchronized public void replay() {
+        replay(null);
+    }
+
+    /**
+     * Resets and replays events to registered replayable event handlers, see {@link EventHandler#enableReplay()}.
      *
      * @param end end position, exclusive
      */
@@ -162,7 +183,7 @@ public class EventBus implements AutoCloseable {
                 .build());
         synchronousResetHandlers.forEach(Runnable::run);
         asynchronousResetHandlers.forEach(executor::submit);
-        eventsToReplay.forEach(this::invokeEventHandlers);
+        eventsToReplay.forEach(this::invokeReplayableEventHandlers);
     }
 
     void invokeEventHandlers(SequencedEvent sequencedEvent) {
@@ -173,6 +194,18 @@ public class EventBus implements AutoCloseable {
         }
         if (synchronousEventHandlers.containsKey(sequencedEvent.type())) {
             synchronousEventHandlers.get(sequencedEvent.type())
+                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload()));
+        }
+    }
+
+    void invokeReplayableEventHandlers(SequencedEvent sequencedEvent) {
+        if (asynchronousReplayableEventHandlers.containsKey(sequencedEvent.type())) {
+            executor.submit(() -> asynchronousReplayableEventHandlers.get(sequencedEvent.type()).forEach(
+                    eventHandler -> eventHandler.invoke(sequencedEvent.payload())
+            ));
+        }
+        if (synchronousReplayableEventHandlers.containsKey(sequencedEvent.type())) {
+            synchronousReplayableEventHandlers.get(sequencedEvent.type())
                     .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload()));
         }
     }
