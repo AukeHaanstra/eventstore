@@ -104,50 +104,88 @@ public class StateManager<T> {
         executeEventSourcedCallbacks();
     }
 
+    /**
+     * Since sourcing state is a resource-intensive operation (requires streaming all sourced events to eventsourced handlers),
+     * and since writing to the eventstore is costly because it requires obtaining a write lock,
+     * always try to apply as many events at once as possible when applying a state change.
+     *
+     * See {@link #apply(List)}
+     */
     public void apply(Object eventPayload, Tag tag) {
         requireNonNull(eventPayload);
         requireNonNull(tag);
-        apply(eventPayload, Tags.and(tag), Type.of(eventPayload.getClass()));
+        apply(List.of(Event.of(eventPayload, Type.of(eventPayload.getClass()), Set.of(tag))));
     }
 
+    /**
+     * Since sourcing state is a resource-intensive operation (requires streaming all sourced events to eventsourced handlers),
+     * and since writing to the eventstore is costly because it requires obtaining a write lock,
+     * always try to apply as many events at once as possible when applying a state change.
+     *
+     * See {@link #apply(List)}
+     */
     public void apply(Object eventPayload, Tags tags) {
         requireNonNull(eventPayload);
         requireNonNull(tags);
-        apply(eventPayload, tags, Type.of(eventPayload.getClass()));
+        apply(List.of(Event.of(eventPayload, Type.of(eventPayload.getClass()), tags.toSet())));
     }
 
+    /**
+     * Since sourcing state is a resource-intensive operation (requires streaming all sourced events to eventsourced handlers),
+     * and since writing to the eventstore is costly because it requires obtaining a write lock,
+     * always try to apply as many events at once as possible when applying a state change.
+     *
+     * See {@link #apply(List)}
+     */
     public void apply(Object eventPayload, Tag tag, Type type) {
         requireNonNull(eventPayload);
         requireNonNull(tag);
         requireNonNull(type);
-        apply(eventPayload, Tags.and(tag), type);
+        apply(List.of(Event.of(eventPayload, type, Set.of(tag))));
     }
 
+    /**
+     * Since sourcing state is a resource-intensive operation (requires streaming all sourced events to eventsourced handlers),
+     * and since writing to the eventstore is costly because it requires obtaining a write lock,
+     * always try to apply as many events at once as possible when applying a state change.
+     *
+     * See {@link #apply(List)}
+     */
     public void apply(Object eventPayload, Tags tags, Type type) {
         requireNonNull(eventPayload);
         requireNonNull(tags);
         requireNonNull(type);
+        apply(List.of(Event.of(eventPayload, type, tags.toSet())));
+    }
+
+    /**
+     * Since sourcing state is a resource-intensive operation (requires streaming all sourced events to eventsourced handlers),
+     * and since writing to the eventstore is costly because it requires obtaining a write lock,
+     * always try to apply as many events at once as possible when applying a state change.
+     */
+    public void apply(List<Event> events) {
+        requireNonNull(events);
+        List<Event> eventsToSourceBack = events;
         if (!state.isInitialized()) {
-            state = initialStateCreator.createState(eventPayload); // try create state from event
-        } else {
-            InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(type);
+            state = initialStateCreator.createState(events.getFirst().payload()); // try create state from first event
+            eventsToSourceBack = events.subList(1, events.size());
+        }
+        for (Event event : eventsToSourceBack) {
+            InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(event.type());
             if (eventSourcedEventHandler != null) {
-                eventSourcedEventHandler.invoke(eventPayload);
+                eventSourcedEventHandler.invoke(event.payload());
             } // if there is no eventsourced handler, that is fine, we don't apply the event, but only append it to the event store
         }
-        if (sequencePositionLastSourcedEvent == null) { // No events sourced before
-            sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type)).get();
-        } else { // use query + append condition for storing event
-            try {
-                sequencePositionLastSourcedEvent = eventStore.append(new Event(eventPayload, tags.toSet(), type), AppendCondition.builder()
-                        .failIfEventsMatch(query)
-                        .after(sequencePositionLastSourcedEvent.value())
-                        .build()).get();
-            } catch (AppendConditionNotSatisfied e) {
-                throw new StateManager.StateManagerOptimisticLockingException(
-                        "An (unmanaged) state-modifying event was stored after event sourcing but before applying the " +
-                                "current state-modifying event, please retry.", e);
-            }
+        // use query + append condition for storing events
+        try {
+            sequencePositionLastSourcedEvent = eventStore.append(events, AppendCondition.builder()
+                    .failIfEventsMatch(query)
+                    .after(sequencePositionLastSourcedEvent == null ? null : sequencePositionLastSourcedEvent)
+                    .build()).get();
+        } catch (AppendConditionNotSatisfied e) {
+            throw new StateManager.StateManagerOptimisticLockingException(
+                    "An (unmanaged) state-modifying event was stored after event sourcing but before applying the " +
+                            "current state-modifying event, please retry.", e);
         }
     }
 

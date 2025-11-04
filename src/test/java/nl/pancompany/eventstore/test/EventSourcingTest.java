@@ -16,6 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -79,6 +80,30 @@ public class EventSourcingTest {
         assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myOtherEvent, myNewEvent);
         sequencedEvents = eventStore.read(query);
         assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event2, event3);
+    }
+
+    @Test
+    void appliesTwoEvents() {
+        // Arrange
+        eventStore.append(event0, event1);
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1);
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+        MyState state = stateManager.getState().get();
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(List.of(
+                Event.of(myNewEvent, Type.of(MyNewEvent.class), Tag.of("MyEntity", MY_ENTITY_ID)),
+                Event.of(myOtherEvent, Type.of(MyOtherEvent.class), Tag.of("MyEntity", MY_ENTITY_ID))
+        ));
+
+        // Assert
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent, myNewEvent, myOtherEvent);
+        sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1, event3, event2);
     }
 
     @Test
@@ -246,6 +271,29 @@ public class EventSourcingTest {
 
         stateManager.apply(myInitialEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyInitialEvent.class));
         stateManager.apply(myEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyEvent.class));
+
+        // Assert
+        MyState state = stateManager.getState().get();
+        assertThat(state.myHandledEvents).containsExactly(myInitialEvent, myEvent);
+        sequencedEvents = eventStore.read(query);
+        assertThat(toEvents(sequencedEvents)).containsExactly(event0, event1);
+    }
+
+    @Test
+    void applyingCreatorAndRegularSourcedEventAtOnceToUninitializedStateIsPossible() {
+        // Arrange
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        // Act (just like in a command handler)
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(List.of(
+                Event.of(myInitialEvent, Type.of(MyInitialEvent.class), Tag.of("MyEntity", MY_ENTITY_ID)),
+                Event.of(myEvent, Type.of(MyEvent.class), Tag.of("MyEntity", MY_ENTITY_ID))
+        ));
 
         // Assert
         MyState state = stateManager.getState().get();
