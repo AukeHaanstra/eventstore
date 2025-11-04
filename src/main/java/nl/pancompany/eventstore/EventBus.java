@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import nl.pancompany.eventstore.annotation.EventHandler;
 import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.query.Query;
+import nl.pancompany.eventstore.query.Tag;
 import nl.pancompany.eventstore.query.Type;
 import nl.pancompany.eventstore.data.LoggedException;
 import nl.pancompany.eventstore.data.ReadOptions;
@@ -18,16 +19,17 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toSet;
 
 @Slf4j
 public class EventBus implements AutoCloseable {
 
     private static final int EXCEPTION_QUEUE_CAPACITY = 100;
     private final EventStore eventStore;
-    private final Map<Type, Set<InvocableEventHandler>> synchronousEventHandlers = new HashMap<>();
-    private final Map<Type, Set<InvocableEventHandler>> asynchronousEventHandlers = new HashMap<>();
-    private final Map<Type, Set<InvocableEventHandler>> synchronousReplayableEventHandlers = new HashMap<>();
-    private final Map<Type, Set<InvocableEventHandler>> asynchronousReplayableEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableFilteringEventHandler>> synchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableFilteringEventHandler>> asynchronousEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableFilteringEventHandler>> synchronousReplayableEventHandlers = new HashMap<>();
+    private final Map<Type, Set<InvocableFilteringEventHandler>> asynchronousReplayableEventHandlers = new HashMap<>();
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Runnable> synchronousResetHandlers = new HashSet<>();
     private final Set<Runnable> asynchronousResetHandlers = new HashSet<>();
@@ -98,7 +100,7 @@ public class EventBus implements AutoCloseable {
         }
         Set<Method> resetHandlerMethods = getResetHandlers(clazz.getSuperclass(), instance);
         Set<Method> newResetHandlerMethods = Arrays.stream(clazz.getDeclaredMethods()).filter(
-                method -> method.isAnnotationPresent(ResetHandler.class)).collect(Collectors.toSet());
+                method -> method.isAnnotationPresent(ResetHandler.class)).collect(toSet());
         if (newResetHandlerMethods.size() > 1) {
             throw new IllegalArgumentException("Multiple reset handlers per class are not allowed.");
         }
@@ -119,13 +121,13 @@ public class EventBus implements AutoCloseable {
     }
 
     private void registerEventHandler(Class<?> eventHandlerClass, Object instance, boolean synchronous) {
-        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(eventHandlerClass, instance, false);
-        Map<Type, Set<InvocableEventHandler>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
+        Map<Type, InvocableFilteringEventHandler> newEventHandlers = getNewEventHandlers(eventHandlerClass, instance, false);
+        Map<Type, Set<InvocableFilteringEventHandler>> eventHandlers = synchronous ? synchronousEventHandlers : asynchronousEventHandlers;
         newEventHandlers.keySet().forEach(key -> eventHandlers.computeIfAbsent(key, type -> new HashSet<>())
                 .add(newEventHandlers.get(key)));
 
-        Map<Type, InvocableEventHandler> newReplayableEventHandlers = getNewEventHandlers(eventHandlerClass, instance, true);
-        Map<Type, Set<InvocableEventHandler>> replayableEventHandlers = synchronous ? synchronousReplayableEventHandlers : asynchronousReplayableEventHandlers;
+        Map<Type, InvocableFilteringEventHandler> newReplayableEventHandlers = getNewEventHandlers(eventHandlerClass, instance, true);
+        Map<Type, Set<InvocableFilteringEventHandler>> replayableEventHandlers = synchronous ? synchronousReplayableEventHandlers : asynchronousReplayableEventHandlers;
         newReplayableEventHandlers.keySet().forEach(key -> replayableEventHandlers.computeIfAbsent(key, type -> new HashSet<>())
                 .add(newReplayableEventHandlers.get(key)));
     }
@@ -134,21 +136,31 @@ public class EventBus implements AutoCloseable {
      * Recursively find all event handlers in the inheritance hierarchy, overwriting eventhandlers from superclasses
      * with eventhandlers from subclasses for the same event type.
      */
-    private Map<Type, InvocableEventHandler> getNewEventHandlers(Class<?> clazz, Object instance, boolean onlyReplayable) {
+    private Map<Type, InvocableFilteringEventHandler> getNewEventHandlers(Class<?> clazz, Object instance, boolean onlyReplayable) {
         if (clazz == null) {
             return new HashMap<>(); // base case
         }
-        Map<Type, InvocableEventHandler> newEventHandlers = getNewEventHandlers(clazz.getSuperclass(), instance, onlyReplayable);
+        Map<Type, InvocableFilteringEventHandler> newEventHandlers = getNewEventHandlers(clazz.getSuperclass(), instance, onlyReplayable);
         Set<Method> eventHandlerMethods = Arrays.stream(clazz.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(EventHandler.class))
                 .filter(method -> !onlyReplayable || isReplayEnabled(method))
-                .collect(Collectors.toSet());
+                .collect(toSet());
         eventHandlerMethods.forEach(method -> method.setAccessible(true));
         newEventHandlers.putAll(eventHandlerMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
-                method -> event -> invoke(method, instance, event)
+                method -> (event, eventTags) -> {
+                    Set<Tag> requiredTags = getTags(method);
+                    if (eventTags.containsAll(requiredTags)) {
+                        invoke(method, instance, event);
+                    }
+                }
         )));
         return newEventHandlers;
+    }
+
+    private Set<Tag> getTags(Method eventHandlerMethod) {
+        EventHandler eventHandler = eventHandlerMethod.getAnnotation(EventHandler.class);
+        return Arrays.stream(eventHandler.tags()).map(Tag::new).collect(toSet());
     }
 
     private Type getEventType(Method eventHandlerMethod) {
@@ -189,24 +201,24 @@ public class EventBus implements AutoCloseable {
     void invokeEventHandlers(SequencedEvent sequencedEvent) {
         if (asynchronousEventHandlers.containsKey(sequencedEvent.type())) {
             executor.submit(() -> asynchronousEventHandlers.get(sequencedEvent.type()).forEach(
-                    eventHandler -> eventHandler.invoke(sequencedEvent.payload())
+                    eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags())
             ));
         }
         if (synchronousEventHandlers.containsKey(sequencedEvent.type())) {
             synchronousEventHandlers.get(sequencedEvent.type())
-                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload()));
+                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags()));
         }
     }
 
     void invokeReplayableEventHandlers(SequencedEvent sequencedEvent) {
         if (asynchronousReplayableEventHandlers.containsKey(sequencedEvent.type())) {
             executor.submit(() -> asynchronousReplayableEventHandlers.get(sequencedEvent.type()).forEach(
-                    eventHandler -> eventHandler.invoke(sequencedEvent.payload())
+                    eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags())
             ));
         }
         if (synchronousReplayableEventHandlers.containsKey(sequencedEvent.type())) {
             synchronousReplayableEventHandlers.get(sequencedEvent.type())
-                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload()));
+                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags()));
         }
     }
 
