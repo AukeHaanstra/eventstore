@@ -45,7 +45,8 @@ public class StateManager<T> {
     @SuppressWarnings("unchecked")
     void load(T emptyStateInstance) {
         requireNonNull(emptyStateInstance);
-        state = new State<>(emptyStateInstance, eventStore.read(query));
+        List<SequencedEvent> events = eventStore.read(query);
+        state = new State<>(emptyStateInstance, events, events);
         eventSourcedCallbacks = getEventSourcedCallbacks(stateClass);
         executeEventSourcedCallbacks();
     }
@@ -84,7 +85,9 @@ public class StateManager<T> {
         events.stream()
                 .filter(event -> eventSourcedCallbacks.containsKey(event.type()))
                 .forEach(event -> eventSourcedCallbacks.get(event.type()).invoke(event.payload()));
-        sequencePositionLastSourcedEvent = events.isEmpty() ? null : events.getLast().position();
+        List<SequencedEvent> allEventsLoadedFromEventStore = state.getAllSequencedEvents();
+        sequencePositionLastSourcedEvent = allEventsLoadedFromEventStore.isEmpty() ?
+                null : allEventsLoadedFromEventStore.getLast().position();
     }
 
     private void invoke(Method method, Object eventPayload) {

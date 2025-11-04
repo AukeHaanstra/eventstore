@@ -12,6 +12,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static java.util.Collections.emptyList;
 import static java.util.function.Function.identity;
 import static nl.pancompany.eventstore.State.uninitializedState;
 import static nl.pancompany.eventstore.query.Type.getTypeForAnnotatedParameter;
@@ -65,7 +66,7 @@ class InitialStateCreator<T> {
                 .orElseThrow(() -> new IllegalArgumentException(String.format("State class must have a no-args " +
                         "constructor or an @%s annotated constructor.", StateCreator.class.getSimpleName())));
         noArgConstructor.setAccessible(true);
-        return new State<>(invoke(noArgConstructor), events);
+        return new State<>(invoke(noArgConstructor), events, events);
     }
 
     private T invoke(Constructor<T> constructor) {
@@ -86,7 +87,7 @@ class InitialStateCreator<T> {
         if (constructor == null) {
             throw new StateConstructionFailedException(String.format("No state constructor found for event type %s.", firstEvent.type()));
         }
-        return new State<>(invoke(constructor, firstEvent.payload()), unprocessedEvents);
+        return new State<>(invoke(constructor, firstEvent.payload()), unprocessedEvents, events);
     }
 
     State<T> createState(Object firstEventPayload) {
@@ -99,7 +100,7 @@ class InitialStateCreator<T> {
         if (constructor == null) {
             throw new StateConstructionFailedException(String.format("No state constructor found for event type %s.", firstEvent.type()));
         }
-        return new State<>(invoke(constructor, firstEvent.payload()), Collections.emptyList());
+        return new State<>(invoke(constructor, firstEvent.payload()), emptyList(), emptyList());
     }
 
     private T invoke(Constructor<T> constructor, Object eventPayload) {

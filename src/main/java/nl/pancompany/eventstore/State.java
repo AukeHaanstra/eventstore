@@ -16,15 +16,19 @@ class State<T> {
     private final T entity;
     @Getter(PACKAGE)
     private final List<SequencedEvent> unprocessedEvents;
+    @Getter(PACKAGE)
+    private final List<SequencedEvent> allSequencedEvents;
 
     State() {
         this.entity = null;
         this.unprocessedEvents = emptyList();
+        this.allSequencedEvents = emptyList();
     }
 
-    State(T entity, List<SequencedEvent> unprocessedEvents) {
+    State(T entity, List<SequencedEvent> unprocessedEvents, List<SequencedEvent> allSequencedEvents) {
         this.entity = entity;
         this.unprocessedEvents = unprocessedEvents;
+        this.allSequencedEvents = allSequencedEvents;
     }
 
     boolean isInitialized() {

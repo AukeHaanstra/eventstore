@@ -320,6 +320,28 @@ public class EventSourcingTest {
     }
 
     @Test
+    void whenInitialSourcedEventIsConstructorEventThenApplyNewEventSucceeds() {
+        // Arrange
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        // Act (just like in a command handler)
+        eventStore.append(event0);
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+        MyState myState = stateManager.getState().get();
+        assertThat(myState.myHandledEvents).hasSize(1);
+        assertThat(myState.myHandledEvents).containsExactly(myInitialEvent);
+
+        // < business rules validation and decision-making (state change or automation) >
+
+        stateManager.apply(myEvent, Tag.of("MyEntity", MY_ENTITY_ID), Type.of(MyEvent.class));
+
+        // Assert
+        assertThat(myState.myHandledEvents).hasSize(2);
+        assertThat(myState.myHandledEvents).containsExactly(myInitialEvent, myEvent);
+    }
+
+    @Test
     void mayAppendAndApplyUnsourcedEvent() {
         // Arrange
         eventStore.append(event0, event1, event2, unsourced);
