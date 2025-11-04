@@ -168,6 +168,9 @@ public class StateManager<T> {
      */
     public void apply(List<Event> events) {
         requireNonNull(events);
+        if (events.isEmpty()) {
+            return; // nothing to apply
+        }
         List<Event> eventsToSourceBack = events;
         if (!state.isInitialized()) {
             state = initialStateCreator.createState(events.getFirst().payload()); // try create state from first event

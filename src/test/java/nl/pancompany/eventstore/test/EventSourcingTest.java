@@ -303,6 +303,18 @@ public class EventSourcingTest {
     }
 
     @Test
+    void applyingListOfEmptyEventsIsSkipped() {
+        List<SequencedEvent> sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+
+        StateManager<MyState> stateManager = eventStore.loadState(MyState.class, query);
+        stateManager.apply(new ArrayList<Event>());
+
+        sequencedEvents = eventStore.read(query);
+        assertThat(sequencedEvents).isEmpty();
+    }
+
+    @Test
     void sourcedEventPublishedInBetweenApplyCallsResultsInOptimisticLockingException() {
         // Arrange
         List<SequencedEvent> sequencedEvents = eventStore.read(query);
