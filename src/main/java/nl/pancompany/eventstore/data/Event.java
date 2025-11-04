@@ -1,6 +1,7 @@
 package nl.pancompany.eventstore.data;
 
 import nl.pancompany.eventstore.query.Tag;
+import nl.pancompany.eventstore.query.Tags;
 import nl.pancompany.eventstore.query.Type;
 
 import java.util.*;
@@ -37,6 +38,12 @@ public record Event(Object payload, Set<Tag> tags, Type type, Optional<Metadata>
     public Event(Object payload, Set<Tag> tags) {
         requireNonNull(payload);
         this(payload, tags, getName(payload));
+    }
+
+    public Event(Object payload, Tags tags) {
+        requireNonNull(payload);
+        requireNonNull(tags);
+        this(payload, tags.toSet(), getName(payload));
     }
 
     public Event(Object payload, String... tags) {
@@ -76,6 +83,10 @@ public record Event(Object payload, Set<Tag> tags, Type type, Optional<Metadata>
     }
 
     public static Event of(Object payload, String... tags) {
+        return new Event(payload, tags);
+    }
+
+    public static Event of(Object payload, Tags tags) {
         return new Event(payload, tags);
     }
 

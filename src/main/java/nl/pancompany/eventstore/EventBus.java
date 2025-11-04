@@ -149,7 +149,7 @@ public class EventBus implements AutoCloseable {
         newEventHandlers.putAll(eventHandlerMethods.stream().collect(Collectors.toMap(
                 this::getEventType,
                 method -> (event, eventTags) -> {
-                    Set<Tag> requiredTags = getTags(method);
+                    Set<Tag> requiredTags = getRequiredTags(method);
                     if (eventTags.containsAll(requiredTags)) {
                         invoke(method, instance, event);
                     }
@@ -158,9 +158,14 @@ public class EventBus implements AutoCloseable {
         return newEventHandlers;
     }
 
-    private Set<Tag> getTags(Method eventHandlerMethod) {
+    private boolean isReplayEnabled(Method eventHandlerMethod) {
+        EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
+        return annotation.enableReplay();
+    }
+
+    private Set<Tag> getRequiredTags(Method eventHandlerMethod) {
         EventHandler eventHandler = eventHandlerMethod.getAnnotation(EventHandler.class);
-        return Arrays.stream(eventHandler.tags()).map(Tag::new).collect(toSet());
+        return Arrays.stream(eventHandler.requiredTags()).map(Tag::new).collect(toSet());
     }
 
     private Type getEventType(Method eventHandlerMethod) {
@@ -170,11 +175,6 @@ public class EventBus implements AutoCloseable {
         Class<?> declaredParameterType = eventHandlerMethod.getParameters()[0].getType();
         EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
         return Type.getTypeForAnnotatedParameter(annotation, declaredParameterType);
-    }
-
-    private boolean isReplayEnabled(Method eventHandlerMethod) {
-        EventHandler annotation = eventHandlerMethod.getAnnotation(EventHandler.class);
-        return annotation.enableReplay();
     }
 
     /**
@@ -198,7 +198,17 @@ public class EventBus implements AutoCloseable {
         eventsToReplay.forEach(this::invokeReplayableEventHandlers);
     }
 
-    void invokeEventHandlers(SequencedEvent sequencedEvent) {
+    void invokeAllEventHandlers(SequencedEvent sequencedEvent) {
+        invokeEventHandlers(sequencedEvent, asynchronousEventHandlers, synchronousEventHandlers);
+    }
+
+    void invokeReplayableEventHandlers(SequencedEvent sequencedEvent) {
+        invokeEventHandlers(sequencedEvent, asynchronousReplayableEventHandlers, synchronousReplayableEventHandlers);
+    }
+
+    private void invokeEventHandlers(SequencedEvent sequencedEvent,
+                                     Map<Type, Set<InvocableFilteringEventHandler>> asynchronousEventHandlers,
+                                     Map<Type, Set<InvocableFilteringEventHandler>> synchronousEventHandlers) {
         if (asynchronousEventHandlers.containsKey(sequencedEvent.type())) {
             executor.submit(() -> asynchronousEventHandlers.get(sequencedEvent.type()).forEach(
                     eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags())
@@ -206,18 +216,6 @@ public class EventBus implements AutoCloseable {
         }
         if (synchronousEventHandlers.containsKey(sequencedEvent.type())) {
             synchronousEventHandlers.get(sequencedEvent.type())
-                    .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags()));
-        }
-    }
-
-    void invokeReplayableEventHandlers(SequencedEvent sequencedEvent) {
-        if (asynchronousReplayableEventHandlers.containsKey(sequencedEvent.type())) {
-            executor.submit(() -> asynchronousReplayableEventHandlers.get(sequencedEvent.type()).forEach(
-                    eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags())
-            ));
-        }
-        if (synchronousReplayableEventHandlers.containsKey(sequencedEvent.type())) {
-            synchronousReplayableEventHandlers.get(sequencedEvent.type())
                     .forEach(eventHandler -> eventHandler.invoke(sequencedEvent.payload(), sequencedEvent.tags()));
         }
     }
@@ -289,4 +287,8 @@ public class EventBus implements AutoCloseable {
         }
     }
 
+    @FunctionalInterface
+    private interface InvocableFilteringEventHandler {
+        void invoke(Object event, Set<Tag> eventTagsToMatch);
+    }
 }

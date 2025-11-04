@@ -129,7 +129,7 @@ public class EventStore implements AutoCloseable {
         }
         synchronized (eventBus) { // poll() & synchronized guarantee sequential in-order processing of queue elements
             while (!addedEvents.isEmpty()) {
-                eventBus.invokeEventHandlers(addedEvents.poll());
+                eventBus.invokeAllEventHandlers(addedEvents.poll());
             }
         }
         return Optional.ofNullable(lastInsertPosition);

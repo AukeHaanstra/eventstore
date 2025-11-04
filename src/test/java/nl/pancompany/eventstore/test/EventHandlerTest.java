@@ -6,6 +6,8 @@ import nl.pancompany.eventstore.annotation.ResetHandler;
 import nl.pancompany.eventstore.data.Event;
 import nl.pancompany.eventstore.data.LoggedException;
 import nl.pancompany.eventstore.data.SequencePosition;
+import nl.pancompany.eventstore.query.Tag;
+import nl.pancompany.eventstore.query.Tags;
 import nl.pancompany.eventstore.query.Type;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +35,8 @@ public class EventHandlerTest {
         MultiEventHandlerClass.myHandledEvent = null;
         MultiEventHandlerClass.myOtherHandledEvent = null;
         RecordingEventHandlerClass.myHandledEvents.clear();
+        FilteringEventHandlersClass.myHandledEvents.clear();
+        FilteringEventHandlersClass.someOtherHandledEvents.clear();
     }
 
     @AfterEach
@@ -471,6 +475,71 @@ public class EventHandlerTest {
     }
 
     private static class NoHandlerClass {
+
+    }
+
+    @Test
+    void filteringEventHandlerShouldReceiveEventWithMatchingTag() {
+        MyEvent myEvent = new MyEvent("data");
+
+        eventStore.getEventBus().registerAsynchronousEventHandler(FilteringEventHandlersClass.class);
+        eventStore.append(new Event(myEvent, Tag.of("One")));
+
+        await().untilAsserted(() -> {
+            assertThat(FilteringEventHandlersClass.myHandledEvents).hasSize(1);
+            assertThat(FilteringEventHandlersClass.myHandledEvents).contains(myEvent);
+        });
+    }
+
+    @Test
+    void filteringEventHandlerShouldNotReceiveEventWithNonMatchingTag() throws InterruptedException {
+        MyEvent myEvent = new MyEvent("data");
+
+        eventStore.getEventBus().registerAsynchronousEventHandler(FilteringEventHandlersClass.class);
+        eventStore.append(new Event(myEvent, Tag.of("Two")));
+
+        Thread.sleep(500);
+        assertThat(FilteringEventHandlersClass.myHandledEvents).isEmpty();
+    }
+
+    @Test
+    void filteringEventHandlerShouldNotReceiveEventWithLessTagsThanRequired() throws InterruptedException {
+        SomeOtherEvent someOtherEvent = new SomeOtherEvent("data");
+
+        eventStore.getEventBus().registerAsynchronousEventHandler(FilteringEventHandlersClass.class);
+        eventStore.append(new Event(someOtherEvent, Tag.of("Two")));
+
+        Thread.sleep(500);
+        assertThat(FilteringEventHandlersClass.someOtherHandledEvents).isEmpty();
+    }
+
+    @Test
+    void filteringEventHandlerShouldReceiveEventWithMoreTagsThanRequired() {
+        SomeOtherEvent someOtherEvent = new SomeOtherEvent("data");
+
+        eventStore.getEventBus().registerAsynchronousEventHandler(FilteringEventHandlersClass.class);
+        eventStore.append(Event.of(someOtherEvent, Tags.and("One", "Two", "Three")));
+
+        await().untilAsserted(() -> {
+            assertThat(FilteringEventHandlersClass.someOtherHandledEvents).hasSize(1);
+            assertThat(FilteringEventHandlersClass.someOtherHandledEvents).contains(someOtherEvent);
+        });
+    }
+
+    private static class FilteringEventHandlersClass {
+
+        private static List<MyEvent> myHandledEvents = new CopyOnWriteArrayList<>();
+        private static List<SomeOtherEvent> someOtherHandledEvents = new CopyOnWriteArrayList<>();
+
+        @EventHandler(requiredTags = "One")
+        private void handle(MyEvent event) {
+            myHandledEvents.add(event);
+        }
+
+        @EventHandler(requiredTags = {"One", "Two"})
+        private void handle(SomeOtherEvent event) {
+            someOtherHandledEvents.add(event);
+        }
 
     }
 

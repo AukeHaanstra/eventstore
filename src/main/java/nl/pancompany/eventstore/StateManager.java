@@ -32,7 +32,7 @@ public class StateManager<T> {
     private State<T> state;
 
     private SequencePosition sequencePositionLastSourcedEvent;
-    private Map<Type, InvocableFilteringEventHandler> eventSourcedCallbacks;
+    private Map<Type, InvocableEventHandler> eventSourcedCallbacks;
 
     StateManager(EventStore eventStore, Class<T> stateClass, Query query) {
         this.eventStore = eventStore;
@@ -54,11 +54,11 @@ public class StateManager<T> {
      * Recursively find all *eventsourced* event handlers in the inheritance hierarchy, overwriting eventhandlers from superclasses
      * with eventhandlers from subclasses for the same event type.
      */
-    private Map<Type, InvocableFilteringEventHandler> getEventSourcedCallbacks(Class<? super T> clazz) {
+    private Map<Type, InvocableEventHandler> getEventSourcedCallbacks(Class<? super T> clazz) {
         if (clazz == null) {
             return new HashMap<>(); // base case
         }
-        Map<Type, InvocableFilteringEventHandler> eventSourcedCallbacks = getEventSourcedCallbacks(clazz.getSuperclass());
+        Map<Type, InvocableEventHandler> eventSourcedCallbacks = getEventSourcedCallbacks(clazz.getSuperclass());
         Set<Method> stateClassMethods = Arrays.stream(clazz.getDeclaredMethods())
                 .filter(method -> method.isAnnotationPresent(EventSourced.class))
                 .collect(Collectors.toSet());
@@ -171,7 +171,7 @@ public class StateManager<T> {
             eventsToSourceBack = events.subList(1, events.size());
         }
         for (Event event : eventsToSourceBack) {
-            InvocableFilteringEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(event.type());
+            InvocableEventHandler eventSourcedEventHandler = eventSourcedCallbacks.get(event.type());
             if (eventSourcedEventHandler != null) {
                 eventSourcedEventHandler.invoke(event.payload());
             } // if there is no eventsourced handler, that is fine, we don't apply the event, but only append it to the event store
@@ -199,4 +199,8 @@ public class StateManager<T> {
         }
     }
 
+    @FunctionalInterface
+    private interface InvocableEventHandler {
+        void invoke(Object event);
+    }
 }
